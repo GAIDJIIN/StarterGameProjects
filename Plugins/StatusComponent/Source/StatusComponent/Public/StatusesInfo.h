@@ -16,6 +16,30 @@ enum EStatusState : uint8
 };
 
 USTRUCT(BlueprintType)
+struct FStatusesFindInfo
+{
+	GENERATED_USTRUCT_BODY()
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Statuses Component")
+		FGameplayTagContainer StatusesToFind;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Statuses Component")
+		bool bCheckAll = false;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Statuses Component")
+		bool bExactCheck = true;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Statuses Component")
+		bool bInverseCondition = false;
+	
+	FStatusesFindInfo()
+	{
+	}
+
+	FStatusesFindInfo(const FGameplayTagContainer NewStatusesToFind, const bool bNewCheckAll,
+		const bool bNewExactCheck, const bool bNewInverseCondition) : StatusesToFind(NewStatusesToFind),
+	bCheckAll(bNewCheckAll), bExactCheck(bNewExactCheck), bInverseCondition(bNewInverseCondition)
+	{
+	}
+};
+
+USTRUCT(BlueprintType)
 struct FStatusesInfo
 {
 	GENERATED_USTRUCT_BODY()
