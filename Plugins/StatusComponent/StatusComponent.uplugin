@@ -4,7 +4,7 @@
 	"VersionName": "1.0",
 	"FriendlyName": "StatusComponent",
 	"Description": "Convenient system for managing the status of various game objects",
-	"Category": "Other",
+	"Category": "Custom Game Engine Logic",
 	"CreatedBy": "GAIDJIIN",
 	"CreatedByURL": "https://github.com/GAIDJIIN",
 	"DocsURL": "",

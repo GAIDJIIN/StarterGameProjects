@@ -64,22 +64,18 @@ struct FStatusesInfo
 };
 
 USTRUCT(BlueprintType)
-struct FStatusesWithAddInfo
+struct FStatusesWithAddInfo : public FStatusesInfo
 {
 	GENERATED_USTRUCT_BODY()
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Statuses Component")
-		FStatusesInfo StatusesInfo;
+	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Statuses Component")
 		bool bIsClearTimer = false;
 
-	FStatusesWithAddInfo()
-	{
-	}
+	FStatusesWithAddInfo() : FStatusesInfo() {}
 
 	FStatusesWithAddInfo(const FStatusesInfo NewStatuses, const bool bNewIsClearTimer) :
-		StatusesInfo(NewStatuses), bIsClearTimer(bNewIsClearTimer)
-	{
-	}
+		FStatusesInfo(NewStatuses), bIsClearTimer(bNewIsClearTimer) {}
+	
 };
 
 USTRUCT(BlueprintType)

@@ -1,0 +1,30 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "GameEnhancedInputMappingSystem",
+	"Description": "Enhanced Input Mapping subsystem with control added mapping contexts",
+	"Category": "Custom Game Engine Logic",
+	"CreatedBy": "GAIDJIIN",
+	"CreatedByURL": "github.com/GAIDJIIN",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": true,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "GameEnhancedInputMappingSystem",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "EnhancedInput",
+			"Enabled": true
+		}
+	]
+}

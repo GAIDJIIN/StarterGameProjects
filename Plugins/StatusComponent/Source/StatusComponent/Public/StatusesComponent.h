@@ -48,9 +48,11 @@ public:
     
     // Setter
     UFUNCTION(BlueprintCallable, Category="Statuses Component|Add Logic")
+        bool AddConstantStatuses(const FGameplayTagContainer& ConstantStatuses);
+    UFUNCTION(BlueprintCallable, Category="Statuses Component|Add Logic")
         bool AddStatusesWithInfo(const FStatusesInfoArray& StatusesToAdd);
     UFUNCTION(BlueprintCallable, Category="Statuses Component|Remove Logic")
-        bool RemoveStatuses(const FGameplayTagContainer StatusesToRemove);
+        bool RemoveStatuses(const FGameplayTagContainer& StatusesToRemove);
     UFUNCTION(BlueprintCallable, Category="Statuses Component|Remove Logic")
         bool RemoveAllStatuses() { return RemoveStatuses(Statuses); }
     

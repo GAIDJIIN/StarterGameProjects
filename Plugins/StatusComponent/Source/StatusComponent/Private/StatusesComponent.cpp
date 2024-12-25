@@ -128,6 +128,11 @@ bool UStatusesComponent::GetIsContainStatuses(const FGameplayTagContainer& Statu
 
 // Main Add Statuses Logic
 
+bool UStatusesComponent::AddConstantStatuses(const FGameplayTagContainer& ConstantStatuses)
+{
+	return AddStatuses(ConstantStatuses);
+}
+
 bool UStatusesComponent::AddStatusesWithInfo(const FStatusesInfoArray& StatusesToAdd)
 {
 	if (StatusesToAdd.StatusesInfo.IsEmpty()) return false;
@@ -139,15 +144,15 @@ bool UStatusesComponent::AddStatusesWithInfo(const FStatusesInfoArray& StatusesT
 	
 	for (auto StatusContainerToAdd : StatusesToAdd.StatusesInfo)
 	{
-		if (StatusContainerToAdd.StatusesInfo.Statuses.IsEmpty()) continue;
+		if (StatusContainerToAdd.Statuses.IsEmpty()) continue;
 		bool bLocalFlag = false;
-		switch (StatusContainerToAdd.StatusesInfo.StatusesState)
+		switch (StatusContainerToAdd.StatusesState)
 		{
 		case Constant:
-			bLocalFlag = AddStatuses(StatusContainerToAdd.StatusesInfo.Statuses);
+			bLocalFlag = AddStatuses(StatusContainerToAdd.Statuses);
 			break;
 		case Temporary:
-			bLocalFlag = AddTemporaryStatuses(StatusContainerToAdd.StatusesInfo.Statuses, StatusContainerToAdd.StatusesInfo.TemporaryTimeStatus,
+			bLocalFlag = AddTemporaryStatuses(StatusContainerToAdd.Statuses, StatusContainerToAdd.TemporaryTimeStatus,
 			                     StatusContainerToAdd.bIsClearTimer);
 			break;
 		default:
@@ -188,7 +193,7 @@ bool UStatusesComponent::AddStatuses(const FGameplayTagContainer& StatusesToAdd)
 	return true;
 }
 
-bool UStatusesComponent::RemoveStatuses(const FGameplayTagContainer StatusesToRemove)
+bool UStatusesComponent::RemoveStatuses(const FGameplayTagContainer& StatusesToRemove)
 {
 	if (!GetIsContainStatuses(StatusesToRemove, false, true) || !StatusesToRemove.IsValid()) return false;
 	FGameplayTagContainer RemovedTag;
