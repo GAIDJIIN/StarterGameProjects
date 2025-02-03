@@ -4,17 +4,31 @@
 #include "StatusesComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Kismet/KismetStringLibrary.h"
+#include "Net/UnrealNetwork.h"
+
 
 void UStatusesComponent::TickComponent(float DeltaTime, ELevelTick TickType,
                                        FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+	//if(GetNetMode() != NM_Standalone && GetOwnerRole() == ROLE_Authority) return;
+	
 	if (bShowDebug) ShowDebug();
+	
 }
 
 UStatusesComponent::UStatusesComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
+}
+
+void UStatusesComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	// Replicate statuses
+	DOREPLIFETIME(UStatusesComponent, Statuses);
+	DOREPLIFETIME(UStatusesComponent, TemporaryTags);
 }
 
 // Getter Info
@@ -53,9 +67,16 @@ bool UStatusesComponent::GetStatusInfo(const FGameplayTag& StatusToGet, FStatuse
 		}
 	case Temporary:
 		{
-			if (!TemporaryTags.Contains(StatusToGet)) return false;
+			const auto LocalTemporaryStatus = TemporaryTags.FindByPredicate([&StatusToGet](const FTemporaryStatusInfo& A)
+			{
+				return A.TemporaryStatus == StatusToGet;
+			});
+			
+			if(!LocalTemporaryStatus) return false;
+			
 			const float LocalRemainingTimeStatus = GetWorld()->GetTimerManager().GetTimerRemaining(
-				TemporaryTags.FindRef(StatusToGet));
+				LocalTemporaryStatus->TemporaryStatusTimerHandle);
+			
 			ReturnStatusInfo = FStatusesInfo(
 				StatusToGet.GetSingleTagContainer(),
 				Temporary,
@@ -73,7 +94,7 @@ bool UStatusesComponent::GetStatusState(const FGameplayTag& StatusToCheck, TEnum
 {
 	if (!GetIsContainStatus(StatusToCheck)) return false;
 	StatusState = Constant;
-	if (TemporaryTags.Contains(StatusToCheck)) StatusState = Temporary;
+	if (TemporaryTags.Contains(FTemporaryStatusInfo(StatusToCheck, FTimerHandle()))) StatusState = Temporary;
 	return true;
 }
 
@@ -128,14 +149,14 @@ bool UStatusesComponent::GetIsContainStatuses(const FGameplayTagContainer& Statu
 
 // Main Add Statuses Logic
 
-bool UStatusesComponent::AddConstantStatuses(const FGameplayTagContainer& ConstantStatuses)
+void UStatusesComponent::AddConstantStatuses_Implementation(const FGameplayTagContainer& ConstantStatuses)
 {
-	return AddStatuses(ConstantStatuses);
+	AddStatuses(ConstantStatuses);
 }
 
-bool UStatusesComponent::AddStatusesWithInfo(const FStatusesInfoArray& StatusesToAdd)
+void UStatusesComponent::AddStatusesWithInfo_Implementation(const FStatusesInfoArray& StatusesToAdd)
 {
-	if (StatusesToAdd.StatusesInfo.IsEmpty()) return false;
+	if (StatusesToAdd.StatusesInfo.IsEmpty()) return;
 	bool bLocalResult = false;
 	
 	// Filter Get Can added tag container for call delegate added tags
@@ -172,7 +193,6 @@ bool UStatusesComponent::AddStatusesWithInfo(const FStatusesInfoArray& StatusesT
 		);
 	
 	if (bLocalResult && !LocalAddedStatuses.IsEmpty()) OnAddStatuses.Broadcast(LocalAddedStatuses);
-	return bLocalResult;
 }
 
 bool UStatusesComponent::AddStatus(const FStatusesInfo& StatusToAdd)
@@ -193,9 +213,9 @@ bool UStatusesComponent::AddStatuses(const FGameplayTagContainer& StatusesToAdd)
 	return true;
 }
 
-bool UStatusesComponent::RemoveStatuses(const FGameplayTagContainer& StatusesToRemove)
+void UStatusesComponent::RemoveStatuses_Implementation(const FGameplayTagContainer& StatusesToRemove)
 {
-	if (!GetIsContainStatuses(StatusesToRemove, false, true) || !StatusesToRemove.IsValid()) return false;
+	if (!GetIsContainStatuses(StatusesToRemove, false, true) || !StatusesToRemove.IsValid()) return;
 	FGameplayTagContainer RemovedTag;
 	for (auto Tag : StatusesToRemove)
 	{
@@ -203,11 +223,14 @@ bool UStatusesComponent::RemoveStatuses(const FGameplayTagContainer& StatusesToR
 		RemovedTag.AddTag(Tag);
 		ClearTemporaryStatusTimer(Tag);
 	}
-	if (RemovedTag.IsEmpty()) return false;
+	if (RemovedTag.IsEmpty()) return;
 	Statuses.RemoveTags(RemovedTag);
 	OnRemoveStatuses.Broadcast(RemovedTag);
-	return true;
+
 }
+
+void UStatusesComponent::RemoveAllStatuses_Implementation()
+{ return RemoveStatuses(Statuses); }
 
 // Temporary Logic
 
@@ -226,10 +249,16 @@ bool UStatusesComponent::AddTemporaryStatuses(const FGameplayTagContainer& Statu
 
 bool UStatusesComponent::ClearTemporaryStatusTimer(const FGameplayTag& StatusToClear)
 {
-	if (!TemporaryTags.Contains(StatusToClear) || !GetWorld()) return false;
-	FTimerHandle& LocalTimerHandle = TemporaryTags.FindChecked(StatusToClear);
-	GetWorld()->GetTimerManager().ClearTimer(LocalTimerHandle);
-	TemporaryTags.Remove(StatusToClear);
+	if (!TemporaryTags.Contains(FTemporaryStatusInfo(StatusToClear, FTimerHandle())) || !GetWorld()) return false;
+
+	auto LocalTemporaryStatus = *TemporaryTags.FindByPredicate([&StatusToClear](const FTemporaryStatusInfo& A)
+	{
+		return A.TemporaryStatus == StatusToClear;
+	});
+	
+	GetWorld()->GetTimerManager().ClearTimer(LocalTemporaryStatus.TemporaryStatusTimerHandle);
+	TemporaryTags.Remove(LocalTemporaryStatus);
+	
 	return true;
 }
 
@@ -245,7 +274,9 @@ bool UStatusesComponent::MakeTemporaryStatus(const FGameplayTag& StatusToAdd, co
 	FTimerDelegate TemporaryTagDelegate;
 	TemporaryTagDelegate.BindUFunction(this, "RemoveStatuses", StatusToAdd.GetSingleTagContainer());
 	GetWorld()->GetTimerManager().SetTimer(LocalHandle, TemporaryTagDelegate, TimeToDeleteStatus, false);
-	TemporaryTags.Add(StatusToAdd, LocalHandle);
+	
+	TemporaryTags.AddUnique(FTemporaryStatusInfo(StatusToAdd, LocalHandle));
+	
 	return true;
 }
 
@@ -260,24 +291,17 @@ void UStatusesComponent::ShowDebug()
 	GetStatusesByState(Constant,LocalConstantStatuses);
 	FString DebugStringConstantTags = UKismetStringLibrary::JoinStringArray(
 		UKismetStringLibrary::ParseIntoArray(LocalConstantStatuses.ToStringSimple(), ","), "\n");
-	UKismetSystemLibrary::PrintString(
-		GetWorld(),
-		"Constant Statuses:\n--------------------------------\n" + DebugStringConstantTags,
-		true,
-		true,
-		FLinearColor::Red,
-		0.0f
-	);
 
 	// Show Temporary Statuses
-	TArray<FGameplayTag> TemporaryTagsKeys;
-	TemporaryTags.GetKeys(TemporaryTagsKeys);
+	const auto TemporaryTagsKeys = TemporaryTags;
+	
 	FString DebugStringTemporaryTags;
-	for (auto Tag : TemporaryTagsKeys) DebugStringTemporaryTags += Tag.ToString() + " : " + FString::SanitizeFloat(
-		GetWorld()->GetTimerManager().GetTimerRemaining(TemporaryTags.FindChecked(Tag))) + '\n';
+	for (auto TemporaryTagInfo : TemporaryTagsKeys) DebugStringTemporaryTags += TemporaryTagInfo.TemporaryStatus.ToString()
+	+ " : " + FString::SanitizeFloat(GetWorld()->GetTimerManager().GetTimerRemaining(TemporaryTagInfo.TemporaryStatusTimerHandle)) + '\n';
+	
 	UKismetSystemLibrary::PrintString(
 		GetWorld(),
-		"Temporary Statuses\n--------------------------------\n" + DebugStringTemporaryTags,
+		"Statuses Info:\n--------------------------------\n" + DebugStringConstantTags + "\n" + DebugStringTemporaryTags + "--------------------------------\n",
 		true,
 		true,
 		FLinearColor::Red,
@@ -289,4 +313,29 @@ const FText UStatusesComponent::GetStatusesReadableText(const FGameplayTagContai
 {
 	return FText::FromString(UKismetStringLibrary::JoinStringArray(
 		UKismetStringLibrary::ParseIntoArray(StatusesToText.ToStringSimple(), ","), "\n"));
+}
+
+
+
+
+// Validate Methods
+
+bool UStatusesComponent::AddConstantStatuses_Validate(const FGameplayTagContainer& ConstantStatuses)
+{
+	return true;
+}
+
+bool UStatusesComponent::RemoveAllStatuses_Validate()
+{
+	return true;
+}
+
+bool UStatusesComponent::RemoveStatuses_Validate(const FGameplayTagContainer& StatusesToRemove)
+{
+	return true;
+}
+
+bool UStatusesComponent::AddStatusesWithInfo_Validate(const FStatusesInfoArray& StatusesToAdd)
+{
+	return true;
 }

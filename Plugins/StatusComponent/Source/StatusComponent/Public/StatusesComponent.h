@@ -8,6 +8,36 @@
 #include "StatusesInfo.h"
 #include "StatusesComponent.generated.h"
 
+// Temporary Struct
+
+USTRUCT(BlueprintType)
+struct FTemporaryStatusInfo
+{
+    GENERATED_USTRUCT_BODY()
+
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Statuses Component")
+    FGameplayTag TemporaryStatus;
+    UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Statuses Component")
+    FTimerHandle TemporaryStatusTimerHandle;
+
+
+    FORCEINLINE bool operator==(const FTemporaryStatusInfo& OtherStatusInfo) const
+    {
+        return OtherStatusInfo.TemporaryStatus == TemporaryStatus;
+    }
+	
+    FTemporaryStatusInfo() {}
+
+    FTemporaryStatusInfo(const FGameplayTag NewTemporaryStatus, const FTimerHandle NewTemporaryStatusTimerHandle) :
+    TemporaryStatus(NewTemporaryStatus), TemporaryStatusTimerHandle(NewTemporaryStatusTimerHandle) {}
+	
+};
+
+FORCEINLINE uint32 GetTypeHash(const FTemporaryStatusInfo& OtherInteractInputInfo)
+{
+    return GetTypeHash(OtherInteractInputInfo.TemporaryStatus);
+}
+
 
 // Declare delegates for statuses
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAddStatuses,FGameplayTagContainer, AddStatuses);
@@ -21,6 +51,8 @@ class STATUSCOMPONENT_API UStatusesComponent : public UActorComponent
 public:	
 	UStatusesComponent();
 
+    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+    
     // Blueprint access main functions
     
     // Getter
@@ -47,15 +79,15 @@ public:
         const FText GetStatusesReadableText(const FGameplayTagContainer StatusesToText) const;
     
     // Setter
-    UFUNCTION(BlueprintCallable, Category="Statuses Component|Add Logic")
-        bool AddConstantStatuses(const FGameplayTagContainer& ConstantStatuses);
-    UFUNCTION(BlueprintCallable, Category="Statuses Component|Add Logic")
-        bool AddStatusesWithInfo(const FStatusesInfoArray& StatusesToAdd);
-    UFUNCTION(BlueprintCallable, Category="Statuses Component|Remove Logic")
-        bool RemoveStatuses(const FGameplayTagContainer& StatusesToRemove);
-    UFUNCTION(BlueprintCallable, Category="Statuses Component|Remove Logic")
-        bool RemoveAllStatuses() { return RemoveStatuses(Statuses); }
-    
+    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="Statuses Component|Add Logic")
+        void AddConstantStatuses(const FGameplayTagContainer& ConstantStatuses);
+    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="Statuses Component|Add Logic")
+        void AddStatusesWithInfo(const FStatusesInfoArray& StatusesToAdd);
+    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="Statuses Component|Remove Logic")
+        void RemoveStatuses(const FGameplayTagContainer& StatusesToRemove);
+    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="Statuses Component|Remove Logic")
+        void RemoveAllStatuses();
+
     // Delegates
     UPROPERTY(BlueprintAssignable, Category="Statuses Component|Delegates")
         FOnAddStatuses OnAddStatuses;
@@ -68,14 +100,18 @@ private:
     // Variables
 
     // Statuses Info
-    FGameplayTagContainer Statuses;
-    TMap<FGameplayTag,FTimerHandle> TemporaryTags;
+    UPROPERTY(Replicated)
+        FGameplayTagContainer Statuses;
+
+    UPROPERTY(Replicated)
+        TArray<FTemporaryStatusInfo> TemporaryTags;
 
     // Functions
     
     // Debug
     UPROPERTY(EditAnywhere, Category="Statuses Component|Debug", meta=(bAllowPrivateAccess))
         bool bShowDebug = false;
+    
     void ShowDebug();
 
     // Temporary Logic

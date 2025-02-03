@@ -24,7 +24,10 @@ void UGameEnhancedInputComponent::TickComponent(float DeltaTime, ELevelTick Tick
 void UGameEnhancedInputComponent::BeginPlay()
 {
 	Super::BeginPlay();
-	
+
+	// Return if call it from server
+	if(GetNetMode() != NM_Standalone && GetOwnerRole() == ROLE_Authority) return;
+		
 	const auto LocalPlayerController = UGameplayStatics::GetPlayerController(GetWorld(),0);
 	if(LocalPlayerController && LocalPlayerController->GetLocalPlayer())
 	{
