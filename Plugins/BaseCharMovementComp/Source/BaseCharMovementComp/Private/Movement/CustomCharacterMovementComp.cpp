@@ -28,15 +28,17 @@ void UCustomCharacterMovementComp::BeginPlay()
 	
 	SortCameraShakeBySpeed();
 	
-	// Set timer for calculate speed by directions
+		// Set timer for calculate speed by directions
 	GetWorld()->GetTimerManager().SetTimer(CalculateMovementInfoTimerHandle, this,
-		&UCustomCharacterMovementComp::CalculateMovementInfo, CheckInfoFreq, true);
+			&UCustomCharacterMovementComp::CalculateMovementInfo, CheckInfoFreq, true);
 }
 
 void UCustomCharacterMovementComp::CalculateMovementInfo()
 {
 	CalculateMaxSpeedByDirection(); // Calculate max speed by direction
-	CalculateCameraShakeBySpeed(); // Calculate camera shake by walk
+	
+	// If server or simulated client on other client local machine
+	if(GetOwnerRole() == ROLE_AutonomousProxy) CalculateCameraShakeBySpeed(); // Calculate camera shake by walk
 }
 
 float UCustomCharacterMovementComp::GetMaxSpeed() const
