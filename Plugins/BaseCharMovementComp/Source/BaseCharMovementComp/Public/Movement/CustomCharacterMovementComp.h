@@ -22,6 +22,9 @@ public:
 	virtual void BeginPlay() override;
 	virtual float GetMaxSpeed() const override;
 
+	// Replicate properties
+	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
+	
 	#if WITH_EDITOR
 		virtual auto PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) -> void override;
 	#endif
@@ -87,10 +90,13 @@ private:
 		float RunSpeedCrouched = 250.f;
 
 	// Service
+
+	UPROPERTY(Replicated)
+		float CurrentMaxSpeed = MaxWalkSpeed; // Current max speed
+	UPROPERTY(Replicated)
+		bool bShouldRun = false; // Is should run now
 	
 	FTimerHandle CalculateMovementInfoTimerHandle;
-	float CurrentMaxSpeed = MaxWalkSpeed; // Current max speed
-	bool bShouldRun = false; // Is should run now
 	
 	// Camera Shake Info
 

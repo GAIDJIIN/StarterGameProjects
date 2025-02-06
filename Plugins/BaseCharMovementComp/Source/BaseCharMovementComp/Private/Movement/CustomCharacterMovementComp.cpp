@@ -4,13 +4,14 @@
 #include "Movement/CustomCharacterMovementComp.h"
 #include "Movement/MovementInfoInterface.h"
 #include "Kismet/GameplayStatics.h"
+#include "Net/UnrealNetwork.h"
 
 void UCustomCharacterMovementComp::TickComponent(float DeltaTime, ELevelTick TickType,
-	FActorComponentTickFunction* ThisTickFunction)
+                                                 FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	ShowDebug();
+	if(GetOwnerRole() == ROLE_Authority) ShowDebug();
 }
 
 void UCustomCharacterMovementComp::Deactivate()
@@ -59,6 +60,14 @@ float UCustomCharacterMovementComp::GetMaxSpeed() const
 		default:
 			return 0.f;
 	}
+}
+
+void UCustomCharacterMovementComp::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(UCustomCharacterMovementComp, CurrentMaxSpeed);
+	DOREPLIFETIME(UCustomCharacterMovementComp, bShouldRun);
 }
 
 
