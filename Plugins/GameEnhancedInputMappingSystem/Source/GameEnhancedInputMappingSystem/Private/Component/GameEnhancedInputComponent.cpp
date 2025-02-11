@@ -24,13 +24,14 @@ void UGameEnhancedInputComponent::TickComponent(float DeltaTime, ELevelTick Tick
 void UGameEnhancedInputComponent::BeginPlay()
 {
 	Super::BeginPlay();
-
-	// Return if call it from server
-	if(GetNetMode() != NM_Standalone && GetOwnerRole() == ROLE_Authority) return;
-		
+	
 	const auto LocalPlayerController = UGameplayStatics::GetPlayerController(GetWorld(),0);
 	if(LocalPlayerController && LocalPlayerController->GetLocalPlayer())
 	{
+		// Return if call it from server
+		if(!LocalPlayerController->IsLocalController() || !LocalPlayerController->GetPawn() || GetOwner()->GetRemoteRole() == ROLE_None)
+			return;
+		
 		EnhancedInputLocalPlayerSubsystem = LocalPlayerController->GetLocalPlayer()->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
 	}
 	checkf(EnhancedInputLocalPlayerSubsystem.Get(), TEXT("No find EnhancedInputLocalPlayerSubsystem"))
@@ -246,6 +247,7 @@ const FString UGameEnhancedInputComponent::GetDebugMappingContextState(const EMa
 	return LocalStateString;
 }
 
+#if !UE_BUILD_SHIPPING
 void UGameEnhancedInputComponent::ShowDebugInfo()
 {
 	if(!bShowDebug) return;
@@ -305,3 +307,4 @@ void UGameEnhancedInputComponent::ShowDebugInfo()
 	if(CurrentMainMappingContextsDA) GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::White, GetNameSafe(CurrentMainMappingContextsDA));
 	GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::White, "\nMain Mapping Contexts: ");
 }
+#endif

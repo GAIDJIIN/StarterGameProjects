@@ -73,8 +73,9 @@ private:
 
 	// Debug
 
-	void ShowDebug();
-	
+	#if !UE_BUILD_SHIPPING
+		void ShowDebug();
+	#endif
 	
 	// Variables
 	

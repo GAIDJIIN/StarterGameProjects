@@ -132,5 +132,8 @@ private:
 	// Debug
 
 	const FString GetDebugMappingContextState(const EMappingContextState MappingContextState) const;
-	void ShowDebugInfo();
+
+	#if !UE_BUILD_SHIPPING
+		void ShowDebugInfo();
+	#endif
 };

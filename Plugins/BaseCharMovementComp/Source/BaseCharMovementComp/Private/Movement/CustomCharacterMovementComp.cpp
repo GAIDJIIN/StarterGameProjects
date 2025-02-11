@@ -11,7 +11,7 @@ void UCustomCharacterMovementComp::TickComponent(float DeltaTime, ELevelTick Tic
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	if(GetOwnerRole() == ROLE_Authority) ShowDebug();
+	ShowDebug();
 }
 
 void UCustomCharacterMovementComp::Deactivate()
@@ -24,8 +24,31 @@ void UCustomCharacterMovementComp::Deactivate()
 void UCustomCharacterMovementComp::BeginPlay()
 {
 	Super::BeginPlay();
-
+	
 	if(!GetWorld()) return;
+
+	FString LocalNetMode = "";
+	switch (GetNetMode())
+	{
+	case NM_Standalone: 
+		LocalNetMode = "Standalone";
+		break;
+	case NM_DedicatedServer: 
+		LocalNetMode = "DedicatedServer";
+		break;
+	case NM_ListenServer: 
+		LocalNetMode = "ListenServer";
+		break;
+	case NM_Client: 
+		LocalNetMode = "Client";
+		break;
+	case NM_MAX: 
+		LocalNetMode = "MAX";
+		break;
+	}
+	
+	if(Cast<APawn>(GetOwner())->IsLocallyControlled()) UE_LOG(LogTemp, Log, TEXT("Net Mode - %s - Start on %s - \n OwnerRole - %s \n RemoteRole - %s"),
+		*LocalNetMode, *GetNameSafe(GetOwner()), *UEnum::GetValueAsString(GetOwnerRole()), *UEnum::GetValueAsString(GetOwner()->GetRemoteRole()));
 	
 	SortCameraShakeBySpeed();
 	
@@ -37,9 +60,12 @@ void UCustomCharacterMovementComp::BeginPlay()
 void UCustomCharacterMovementComp::CalculateMovementInfo()
 {
 	CalculateMaxSpeedByDirection(); // Calculate max speed by direction
-	
+
 	// If server or simulated client on other client local machine
-	if(GetOwnerRole() == ROLE_AutonomousProxy) CalculateCameraShakeBySpeed(); // Calculate camera shake by walk
+	bool bLocalIsLocal = GetOwner()->GetRemoteRole() != ROLE_AutonomousProxy && GetOwnerRole() == ROLE_Authority;
+	//bLocalIsLocal = bLocalIsLocal || 
+	
+	if(GetOwner()->GetRemoteRole() != ROLE_AutonomousProxy) CalculateCameraShakeBySpeed(); // Calculate camera shake by walk
 }
 
 float UCustomCharacterMovementComp::GetMaxSpeed() const
@@ -108,12 +134,14 @@ float UCustomCharacterMovementComp::GetMaxSpeedByDirection() const
 
 	const auto LocalCalculatedDirectionAngle = GetDirection();
 
-	if(bShowDebug)
-	{
-		GEngine->AddOnScreenDebugMessage(-1, CheckInfoFreq + 0.01f, FColor::Emerald,
-			"DotProductAngle - " + FString::SanitizeFloat(LocalCalculatedDirectionAngle));
-	}
-
+	#if !UE_BUILD_SHIPPING
+		if(bShowDebug)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, CheckInfoFreq + 0.01f, FColor::Emerald,
+				"DotProductAngle - " + FString::SanitizeFloat(LocalCalculatedDirectionAngle));
+		}
+	#endif
+	
 	const auto LocalDefaultSpeed = Super::GetMaxSpeed();
 	const auto LocalSpeedByDirection = GetIsShouldRun() ? LocalDefaultSpeed : LocalDefaultSpeed / 2;
 	const auto LocalFullSpeed = GetIsShouldRun() ? (IsCrouching() ? RunSpeedCrouched : RunSpeed) : LocalDefaultSpeed;
@@ -232,6 +260,7 @@ void UCustomCharacterMovementComp::PostEditChangeProperty(FPropertyChangedEvent&
 
 // Show Debug
 
+#if !UE_BUILD_SHIPPING
 void UCustomCharacterMovementComp::ShowDebug()
 {
 	if(!bShowDebug) return;
@@ -244,3 +273,4 @@ void UCustomCharacterMovementComp::ShowDebug()
 
 	GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::Emerald, LocalText);
 }
+#endif
