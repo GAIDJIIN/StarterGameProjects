@@ -34,6 +34,8 @@ void UGameEnhancedInputComponent::BeginPlay()
 		
 		EnhancedInputLocalPlayerSubsystem = LocalPlayerController->GetLocalPlayer()->GetSubsystem<UEnhancedInputLocalPlayerSubsystem>();
 	}
+	else return;
+	
 	checkf(EnhancedInputLocalPlayerSubsystem.Get(), TEXT("No find EnhancedInputLocalPlayerSubsystem"))
 
 	if(!bInitializeMainMappingContextsOnBeginPlay) return;

@@ -11,10 +11,8 @@ void UStatusesComponent::TickComponent(float DeltaTime, ELevelTick TickType,
                                        FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-	//if(GetNetMode() != NM_Standalone && GetOwnerRole() == ROLE_Authority) return;
 	
-	if (bShowDebug) ShowDebug();
-	
+	ShowDebug();
 }
 
 UStatusesComponent::UStatusesComponent()
@@ -282,32 +280,34 @@ bool UStatusesComponent::MakeTemporaryStatus(const FGameplayTag& StatusToAdd, co
 
 // Debug Logic
 
-void UStatusesComponent::ShowDebug()
-{
-	if(!GetWorld()) return;
+#if !UE_BUILD_SHIPPING
+	void UStatusesComponent::ShowDebug()
+	{
+		if(!GetWorld() || !bShowDebug) return;
 
-	// Show Constant Statuses
-	FGameplayTagContainer LocalConstantStatuses;
-	GetStatusesByState(Constant,LocalConstantStatuses);
-	FString DebugStringConstantTags = UKismetStringLibrary::JoinStringArray(
-		UKismetStringLibrary::ParseIntoArray(LocalConstantStatuses.ToStringSimple(), ","), "\n");
+		// Show Constant Statuses
+		FGameplayTagContainer LocalConstantStatuses;
+		GetStatusesByState(Constant,LocalConstantStatuses);
+		FString DebugStringConstantTags = UKismetStringLibrary::JoinStringArray(
+			UKismetStringLibrary::ParseIntoArray(LocalConstantStatuses.ToStringSimple(), ","), "\n");
 
-	// Show Temporary Statuses
-	const auto TemporaryTagsKeys = TemporaryTags;
-	
-	FString DebugStringTemporaryTags;
-	for (auto TemporaryTagInfo : TemporaryTagsKeys) DebugStringTemporaryTags += TemporaryTagInfo.TemporaryStatus.ToString()
-	+ " : " + FString::SanitizeFloat(GetWorld()->GetTimerManager().GetTimerRemaining(TemporaryTagInfo.TemporaryStatusTimerHandle)) + '\n';
-	
-	UKismetSystemLibrary::PrintString(
-		GetWorld(),
-		"Statuses Info:\n--------------------------------\n" + DebugStringConstantTags + "\n" + DebugStringTemporaryTags + "--------------------------------\n",
-		true,
-		true,
-		FLinearColor::Red,
-		0.0f
-	);
-}
+		// Show Temporary Statuses
+		const auto TemporaryTagsKeys = TemporaryTags;
+		
+		FString DebugStringTemporaryTags;
+		for (auto TemporaryTagInfo : TemporaryTagsKeys) DebugStringTemporaryTags += TemporaryTagInfo.TemporaryStatus.ToString()
+		+ " : " + FString::SanitizeFloat(GetWorld()->GetTimerManager().GetTimerRemaining(TemporaryTagInfo.TemporaryStatusTimerHandle)) + '\n';
+		
+		UKismetSystemLibrary::PrintString(
+			GetWorld(),
+			"Statuses Info:\n--------------------------------\n" + DebugStringConstantTags + "\n" + DebugStringTemporaryTags + "--------------------------------\n",
+			true,
+			true,
+			FLinearColor::Red,
+			0.0f
+		);
+	}
+#endif
 
 const FText UStatusesComponent::GetStatusesReadableText(const FGameplayTagContainer StatusesToText) const
 {

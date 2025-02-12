@@ -111,8 +111,10 @@ private:
     // Debug
     UPROPERTY(EditAnywhere, Category="Statuses Component|Debug", meta=(bAllowPrivateAccess))
         bool bShowDebug = false;
-    
-    void ShowDebug();
+
+    #if !UE_BUILD_SHIPPING
+        void ShowDebug();
+    #endif
 
     // Temporary Logic
     bool ClearTemporaryStatusTimer(const FGameplayTag& StatusToClear);

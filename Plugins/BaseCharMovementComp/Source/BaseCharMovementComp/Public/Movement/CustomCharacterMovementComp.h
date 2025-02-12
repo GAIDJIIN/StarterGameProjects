@@ -30,13 +30,22 @@ public:
 	#endif
 	
 	// Reset Movement Comp
-	UFUNCTION(Blueprintable, Category="MovementInfo")
-		void ResetMovementComp();
+	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="MovementInfo")
+		void Server_ResetMovementComp();
+	UFUNCTION(NetMulticast, Reliable, BlueprintCallable, Category="MovementInfo")
+		void NetMulticast_ResetMovementComp();
 
+	// Setup Movement Comp
+	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="MovementInfo")
+		void Server_SetupMovementComp();
+	UFUNCTION(NetMulticast, Reliable, BlueprintCallable, Category="MovementInfo")
+		void NetMulticast_SetupMovementComp();
+	
+	
 	// Setter
 
-	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category="MovementInfo")
-		void SetIsShouldRun(const bool NewShouldRun);
+	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="MovementInfo")
+		void Server_SetIsShouldRun(const bool NewShouldRun);
 	
 	// Getter
 	
@@ -48,6 +57,9 @@ private:
 
 	// Functions
 
+	// Setup Movement Comp
+	void SetupMovementComp_Internal();
+	
 	void CalculateMovementInfo();
 
 	float GetDirection() const;

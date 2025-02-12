@@ -18,43 +18,14 @@ void UCustomCharacterMovementComp::Deactivate()
 {
 	Super::Deactivate();
 
-	ResetMovementComp();
+	Server_ResetMovementComp();
 }
 
 void UCustomCharacterMovementComp::BeginPlay()
 {
 	Super::BeginPlay();
 	
-	if(!GetWorld()) return;
-
-	FString LocalNetMode = "";
-	switch (GetNetMode())
-	{
-	case NM_Standalone: 
-		LocalNetMode = "Standalone";
-		break;
-	case NM_DedicatedServer: 
-		LocalNetMode = "DedicatedServer";
-		break;
-	case NM_ListenServer: 
-		LocalNetMode = "ListenServer";
-		break;
-	case NM_Client: 
-		LocalNetMode = "Client";
-		break;
-	case NM_MAX: 
-		LocalNetMode = "MAX";
-		break;
-	}
-	
-	if(Cast<APawn>(GetOwner())->IsLocallyControlled()) UE_LOG(LogTemp, Log, TEXT("Net Mode - %s - Start on %s - \n OwnerRole - %s \n RemoteRole - %s"),
-		*LocalNetMode, *GetNameSafe(GetOwner()), *UEnum::GetValueAsString(GetOwnerRole()), *UEnum::GetValueAsString(GetOwner()->GetRemoteRole()));
-	
-	SortCameraShakeBySpeed();
-	
-		// Set timer for calculate speed by directions
-	GetWorld()->GetTimerManager().SetTimer(CalculateMovementInfoTimerHandle, this,
-			&UCustomCharacterMovementComp::CalculateMovementInfo, CheckInfoFreq, true);
+	SetupMovementComp_Internal();
 }
 
 void UCustomCharacterMovementComp::CalculateMovementInfo()
@@ -62,10 +33,7 @@ void UCustomCharacterMovementComp::CalculateMovementInfo()
 	CalculateMaxSpeedByDirection(); // Calculate max speed by direction
 
 	// If server or simulated client on other client local machine
-	bool bLocalIsLocal = GetOwner()->GetRemoteRole() != ROLE_AutonomousProxy && GetOwnerRole() == ROLE_Authority;
-	//bLocalIsLocal = bLocalIsLocal || 
-	
-	if(GetOwner()->GetRemoteRole() != ROLE_AutonomousProxy) CalculateCameraShakeBySpeed(); // Calculate camera shake by walk
+	if(PawnOwner && PawnOwner->IsLocallyControlled()) CalculateCameraShakeBySpeed(); // Calculate camera shake by walk
 }
 
 float UCustomCharacterMovementComp::GetMaxSpeed() const
@@ -98,7 +66,12 @@ void UCustomCharacterMovementComp::GetLifetimeReplicatedProps(TArray<FLifetimePr
 
 
 // Reset component info
-void UCustomCharacterMovementComp::ResetMovementComp()
+void UCustomCharacterMovementComp::Server_ResetMovementComp_Implementation()
+{
+	NetMulticast_ResetMovementComp();
+}
+
+void UCustomCharacterMovementComp::NetMulticast_ResetMovementComp_Implementation()
 {
 	bShouldRun = false;
 	CurrentMaxSpeed = Super::GetMaxSpeed();
@@ -115,9 +88,46 @@ void UCustomCharacterMovementComp::ResetMovementComp()
 	}
 }
 
-void UCustomCharacterMovementComp::SetIsShouldRun_Implementation(const bool NewShouldRun)
+// Setup Movement Comp
+void UCustomCharacterMovementComp::Server_SetupMovementComp_Implementation()
+{
+	NetMulticast_SetupMovementComp();
+}
+
+bool UCustomCharacterMovementComp::Server_SetupMovementComp_Validate()
+{
+	return true;
+}
+
+void UCustomCharacterMovementComp::NetMulticast_SetupMovementComp_Implementation()
+{
+	SetupMovementComp_Internal();
+}
+
+void UCustomCharacterMovementComp::SetupMovementComp_Internal()
+{
+	if(!GetWorld()) return;
+	
+	SortCameraShakeBySpeed();
+	
+	// Set timer for calculate speed by directions
+	GetWorld()->GetTimerManager().SetTimer(CalculateMovementInfoTimerHandle, this,
+			&UCustomCharacterMovementComp::CalculateMovementInfo, CheckInfoFreq, true);
+}
+
+bool UCustomCharacterMovementComp::Server_ResetMovementComp_Validate()
+{
+	return true;
+}
+
+void UCustomCharacterMovementComp::Server_SetIsShouldRun_Implementation(const bool NewShouldRun)
 {
 	bShouldRun = NewShouldRun;
+}
+
+bool UCustomCharacterMovementComp::Server_SetIsShouldRun_Validate(const bool NewShouldRun)
+{
+	return true;
 }
 
 bool UCustomCharacterMovementComp::GetIsShouldRun_Implementation() const
