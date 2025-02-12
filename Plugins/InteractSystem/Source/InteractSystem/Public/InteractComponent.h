@@ -46,14 +46,14 @@ public:
 
     // Main Logic
     
-    UFUNCTION(BlueprintCallable,Category="Interact Component")
-		void StartInteract();
-    UFUNCTION(BlueprintCallable,Category="Interact Component")
-        void StopInteract();
-    UFUNCTION(BlueprintCallable,Category="Interact Component")
-        void InteractCheck();
-    UFUNCTION(BlueprintCallable,Category="Interact Component")
-        void Interact();
+    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable,Category="Interact Component")
+		void Server_StartInteract();
+    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable,Category="Interact Component")
+        void Server_StopInteract();
+    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable,Category="Interact Component")
+        void Server_InteractCheck();
+    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable,Category="Interact Component")
+        void Server_Interact();
 
     // Setter
     
@@ -134,9 +134,11 @@ private:
     void OnFindOrLostInteractObject(const bool bIsFindInteract) const;
     
     // Debug
-    
-    void ShowDebug();
-    const FString GetCurrentCanInteractStateStringDebug() const;
+
+    #if !UE_BUILD_SHIPPING
+        void ShowDebug();
+        const FString GetCurrentCanInteractStateStringDebug() const;
+    #endif
     
     // Delegates
     

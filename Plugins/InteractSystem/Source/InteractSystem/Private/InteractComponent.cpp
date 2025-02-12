@@ -14,10 +14,15 @@
 UInteractComponent::UInteractComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
-    
-    InteractWidgetComp = CreateDefaultSubobject<UWidgetComponent>("WidgetComponent");
 
-    InteractWidgetManager = NewObject<UInteractWidgetManager>(this, UInteractWidgetManager::StaticClass(),"InteractWidgetManager");
+    if(GetNetMode() == NM_Standalone ||
+        (GetNetMode() == NM_Client && GetOwnerRole() == ROLE_AutonomousProxy) ||
+        (GetOwner()->GetRemoteRole() != ROLE_AutonomousProxy && GetOwnerRole() == ROLE_Authority))
+    {
+        InteractWidgetComp = CreateDefaultSubobject<UWidgetComponent>("WidgetComponent");
+
+        InteractWidgetManager = NewObject<UInteractWidgetManager>(this, UInteractWidgetManager::StaticClass(),"InteractWidgetManager");
+    }
 }
 
 // First Initialize needed info
@@ -47,15 +52,27 @@ void UInteractComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 	ShowDebug();
 }
 
+
+bool UInteractComponent::Server_StartInteract_Validate()
+{
+    return true;
+}
+
+bool UInteractComponent::Server_StopInteract_Validate()
+{
+    return true;
+}
+
+
 // Interact Logic
-void UInteractComponent::Interact()
+void UInteractComponent::Server_Interact_Implementation()
 {
     if(!StatusesComp.IsValid()) return;
     bool bInteractNow = StatusesComp->GetIsContainStatus(FGameplayTag(InteractNowTag),true);
-    bInteractNow ?  StopInteract() : StartInteract();
+    bInteractNow ?  Server_StopInteract() : Server_StartInteract();
 }
 
-void UInteractComponent::StartInteract()
+void UInteractComponent::Server_StartInteract_Implementation()
 {
     if(!InteractableObject.IsValid()) return;
     if(StatusesComp.IsValid())
@@ -90,13 +107,13 @@ void UInteractComponent::StartInteract()
     }
 }
 
-void UInteractComponent::StopInteract()
+void UInteractComponent::Server_StopInteract_Implementation()
 {
     if(!InteractableObject.IsValid()) return;
     IInteractInterface::Execute_StopInteract(InteractableObject.Get(), CurrentHitResult);
 }
 
-void UInteractComponent::InteractCheck()
+void UInteractComponent::Server_InteractCheck_Implementation()
 {
     // Check is can interact now
     const bool bLocalIsValidInteractItem = InteractableObject.Get() && InteractableObject.IsValid();
@@ -200,6 +217,16 @@ void UInteractComponent::OnFindOrLostInteractObject(const bool bIsFindInteract) 
     bIsFindInteract ? OnFindInteract.Broadcast() : OnLostInteract.Broadcast();
 }
 
+bool UInteractComponent::Server_InteractCheck_Validate()
+{
+    return true;
+}
+
+bool UInteractComponent::Server_Interact_Validate()
+{
+    return true;
+}
+
 void UInteractComponent::SetStopInteractCheck(const bool bIsInteractCheck)
 {
     bStopInteractCheck = bIsInteractCheck;
@@ -266,7 +293,7 @@ void UInteractComponent::SetInteractCheck(const bool bIsCheckInteract)
     {
         if(!GetWorld()->GetTimerManager().IsTimerActive(CheckInteractTraceHandle))
             GetWorld()->GetTimerManager().SetTimer(CheckInteractTraceHandle, this,
-                &UInteractComponent::InteractCheck, InteractionFrequency, true);
+                &UInteractComponent::Server_InteractCheck, InteractionFrequency, true);
     }
     // Clear timer if stop interact OR force stop interact
     else GetWorld()->GetTimerManager().ClearTimer(CheckInteractTraceHandle);
@@ -330,57 +357,60 @@ UActorComponent* UInteractComponent::GetInteractComponent(const AActor* Interact
     return nullptr;
 }
 
-// Debug show logic
-void UInteractComponent::ShowDebug()
-{
-    if(!bShowInteractDebug) return;
-    FString DebugText;
-    if(InteractableObject.IsValid())
+
+#if !UE_BUILD_SHIPPING
+    // Debug show logic
+    void UInteractComponent::ShowDebug()
     {
-        DebugText += "Interactable Object is: " + FString(InteractableObject.Get() ? "True" : "False");
-        DebugText += "\nInteractable Name: " + InteractableObject->GetName();
-        if(InteractWidgetComp && !InteractWidgetComp->bHiddenInGame)
+        if(!bShowInteractDebug) return;
+        FString DebugText;
+        if(InteractableObject.IsValid())
         {
-            UKismetSystemLibrary::DrawDebugString(
-                GetWorld(),
-                InteractWidgetComp->GetComponentLocation(),
-                GetNameSafe(InteractableObject.Get())
-                );
+            DebugText += "Interactable Object is: " + FString(InteractableObject.Get() ? "True" : "False");
+            DebugText += "\nInteractable Name: " + InteractableObject->GetName();
+            if(InteractWidgetComp && !InteractWidgetComp->bHiddenInGame)
+            {
+                UKismetSystemLibrary::DrawDebugString(
+                    GetWorld(),
+                    InteractWidgetComp->GetComponentLocation(),
+                    GetNameSafe(InteractableObject.Get())
+                    );
+            }
+        }
+
+        DebugText += "\nInteract State: " + GetCurrentCanInteractStateStringDebug();
+        DebugText += "\nIs stop now: " + FString(bStopNow ? "True" : "False");
+
+        // Get debug info from Interact Widget Manager
+        if(InteractWidgetManager) DebugText += "\n" + InteractWidgetManager->GetDebugInteractWidgetsString() + "\n";
+        
+        UKismetSystemLibrary::PrintString(GetWorld(),
+               DebugText,
+               true,
+               false,
+               FLinearColor::Red,
+               0.0f);
+
+        if(InteractWidgetComp && bShowWidgetLocSphere && InteractWidgetManager) UKismetSystemLibrary::DrawDebugSphere(GetOwner(),
+            InteractWidgetComp->GetComponentLocation(),30.f,12.f, InteractWidgetManager->GetIsWidgetVisibleNow() ?
+            FLinearColor::Green : FLinearColor::Red, 0.f, 2.f);
+        
+    }
+
+    const FString UInteractComponent::GetCurrentCanInteractStateStringDebug() const
+    {
+        switch (CurrentCanInteractState)
+        {
+            case ECanInteractState::None:
+                return "None";
+            case ECanInteractState::CanInteract:
+                return "CanInteract";
+            case ECanInteractState::UsedNow:
+                return "UsedNow";
+            case ECanInteractState::CanNotInteract:
+                return "CanNotInteract";
+            default:
+                return "Default";
         }
     }
-
-    DebugText += "\nInteract State: " + GetCurrentCanInteractStateStringDebug();
-    DebugText += "\nIs stop now: " + FString(bStopNow ? "True" : "False");
-
-    // Get debug info from Interact Widget Manager
-    if(InteractWidgetManager) DebugText += "\n" + InteractWidgetManager->GetDebugInteractWidgetsString() + "\n";
-    
-    UKismetSystemLibrary::PrintString(GetWorld(),
-           DebugText,
-           true,
-           false,
-           FLinearColor::Red,
-           0.0f);
-
-    if(InteractWidgetComp && bShowWidgetLocSphere && InteractWidgetManager) UKismetSystemLibrary::DrawDebugSphere(GetOwner(),
-        InteractWidgetComp->GetComponentLocation(),30.f,12.f, InteractWidgetManager->GetIsWidgetVisibleNow() ?
-        FLinearColor::Green : FLinearColor::Red, 0.f, 2.f);
-    
-}
-
-const FString UInteractComponent::GetCurrentCanInteractStateStringDebug() const
-{
-    switch (CurrentCanInteractState)
-    {
-        case ECanInteractState::None:
-            return "None";
-        case ECanInteractState::CanInteract:
-            return "CanInteract";
-        case ECanInteractState::UsedNow:
-            return "UsedNow";
-        case ECanInteractState::CanNotInteract:
-            return "CanNotInteract";
-        default:
-            return "Default";
-    }
-}
+#endif
