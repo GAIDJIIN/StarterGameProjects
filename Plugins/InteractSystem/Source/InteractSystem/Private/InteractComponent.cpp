@@ -1,4 +1,4 @@
-//Florist Game. All rights reserved.
+//GAIDJIIN. All rights reserved.
 
 
 #include "InteractComponent.h"
@@ -10,14 +10,13 @@
 #include "Interfaces/InteractWidgetInfoInterface.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "Net/UnrealNetwork.h"
 
 UInteractComponent::UInteractComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
 
-    if(GetNetMode() == NM_Standalone ||
-        (GetNetMode() == NM_Client && GetOwnerRole() == ROLE_AutonomousProxy) ||
-        (GetOwner()->GetRemoteRole() != ROLE_AutonomousProxy && GetOwnerRole() == ROLE_Authority))
+    if(IsLocallyControlled())
     {
         InteractWidgetComp = CreateDefaultSubobject<UWidgetComponent>("WidgetComponent");
 
@@ -25,16 +24,26 @@ UInteractComponent::UInteractComponent()
     }
 }
 
+bool UInteractComponent::IsLocallyControlled() const
+{
+    return GetNetMode() == NM_Standalone ||
+        (GetNetMode() == NM_Client && GetOwnerRole() == ROLE_AutonomousProxy) ||
+        (GetOwner()->GetRemoteRole() != ROLE_AutonomousProxy && GetOwnerRole() == ROLE_Authority);
+}
+
 // First Initialize needed info
 void UInteractComponent::FirstInitializeComp()
 {
     if(!GetOwner() || !GetWorld()) return;
+
     StatusesComp = GetOwner()->FindComponentByClass<UStatusesComponent>();
 
-    checkf(InteractWidgetComp && InteractWidgetManager, TEXT("No set Interact Widget Comp or Interact Widget Manager"))
-
-    InteractWidgetManager->SetupInteractWidgetComp(InteractWidgetComp, GetOwner());
-
+    if(IsLocallyControlled())
+    {
+        checkf(InteractWidgetComp && InteractWidgetManager, TEXT("No set Interact Widget Comp or Interact Widget Manager"))
+        InteractWidgetManager->SetupInteractWidgetComp(InteractWidgetComp, GetOwner());
+    }
+    
     SetInteractCheck(true);
 }
 
@@ -42,8 +51,13 @@ void UInteractComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	SetComponentTickEnabled(false);
-    FirstInitializeComp();
-    SetComponentTickEnabled(true);
+
+    // Setup comp only if owner locally controlled
+    if(IsLocallyControlled())
+    {
+        FirstInitializeComp();
+        SetComponentTickEnabled(true);
+    }
 }
 
 void UInteractComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -52,34 +66,50 @@ void UInteractComponent::TickComponent(float DeltaTime, ELevelTick TickType, FAc
 	ShowDebug();
 }
 
+void UInteractComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+    DOREPLIFETIME_CONDITION(UInteractComponent, InteractableObject, COND_OwnerOnly);
+    DOREPLIFETIME_CONDITION(UInteractComponent, CurrentHitResult, COND_OwnerOnly);
+    DOREPLIFETIME_CONDITION(UInteractComponent, bStopInteractCheck, COND_OwnerOnly);
+    DOREPLIFETIME_CONDITION(UInteractComponent, bStopNow, COND_OwnerOnly);
+    DOREPLIFETIME_CONDITION(UInteractComponent, CurrentCanInteractState, COND_OwnerOnly);
+}
+
+//---------------------------------------------Start Interact---------------------------------------------------------//
+
+void UInteractComponent::StartInteract()
+{
+    Server_Interact();
+}
+
+void UInteractComponent::Server_StartInteract_Implementation()
+{
+    StartInteract_Internal();
+    Client_StartInteract();
+}
+
+void UInteractComponent::Client_StartInteract_Implementation()
+{
+    // Play animation, sound and etc
+}
 
 bool UInteractComponent::Server_StartInteract_Validate()
 {
     return true;
 }
 
-bool UInteractComponent::Server_StopInteract_Validate()
+void UInteractComponent::StartInteract_Internal()
 {
-    return true;
-}
+    auto LocalResolvedInteractableObject = GetInteractObject();
+    if(!LocalResolvedInteractableObject) return;
 
-
-// Interact Logic
-void UInteractComponent::Server_Interact_Implementation()
-{
-    if(!StatusesComp.IsValid()) return;
-    bool bInteractNow = StatusesComp->GetIsContainStatus(FGameplayTag(InteractNowTag),true);
-    bInteractNow ?  Server_StopInteract() : Server_StartInteract();
-}
-
-void UInteractComponent::Server_StartInteract_Implementation()
-{
-    if(!InteractableObject.IsValid()) return;
     if(StatusesComp.IsValid())
     {
         if(StatusesComp->GetIsContainStatuses(CantInteractTag,false,true))
         {
-            IInteractInterface::Execute_FailedTryInteract(InteractableObject.Get(),CurrentHitResult);
+            IInteractInterface::Execute_FailedTryInteract(LocalResolvedInteractableObject,CurrentHitResult);
             return;
         }
     }
@@ -88,16 +118,16 @@ void UInteractComponent::Server_StartInteract_Implementation()
      * Check is can interact with Interactable Object.
      * If cant interact with Interactable Object - return
      */
-    if(!IInteractInterface::Execute_CanInteract(InteractableObject.Get(),CurrentHitResult,GetOwner()))
+    if(!IInteractInterface::Execute_CanInteract(LocalResolvedInteractableObject,CurrentHitResult,GetOwner()))
     {
         if(bShowInteractDebug) GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Red,
             FString("Cant Interact With Object"));
 
-        IInteractInterface::Execute_FailedTryInteract(InteractableObject.Get(),CurrentHitResult);
+        IInteractInterface::Execute_FailedTryInteract(LocalResolvedInteractableObject,CurrentHitResult);
         return;
     }
     
-	bool LocalInteractSuccess = IInteractInterface::Execute_StartInteract(InteractableObject.Get(),CurrentHitResult, GetOwner());
+    bool LocalInteractSuccess = IInteractInterface::Execute_StartInteract(LocalResolvedInteractableObject,CurrentHitResult, GetOwner());
     if(LocalInteractSuccess)
     {
         if(bShowInteractDebug) GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Green,
@@ -107,16 +137,111 @@ void UInteractComponent::Server_StartInteract_Implementation()
     }
 }
 
+//--------------------------------------------------------------------------------------------------------------------//
+
+//----------------------------------------------Stop Interact---------------------------------------------------------//
+
+void UInteractComponent::StopInteract()
+{
+    Server_StopInteract();
+}
+
 void UInteractComponent::Server_StopInteract_Implementation()
 {
-    if(!InteractableObject.IsValid()) return;
-    IInteractInterface::Execute_StopInteract(InteractableObject.Get(), CurrentHitResult);
+    StopInteract_Internal();
+    Client_StopInteract();
+}
+
+void UInteractComponent::Client_StopInteract_Implementation()
+{
+    // Play animation, sound and etc
+}
+
+bool UInteractComponent::Server_StopInteract_Validate()
+{
+    return true;
+}
+
+void UInteractComponent::StopInteract_Internal()
+{
+    auto LocalResolvedInteractableObject = GetInteractObject();
+    if(!LocalResolvedInteractableObject) return;
+    IInteractInterface::Execute_StopInteract(LocalResolvedInteractableObject, CurrentHitResult);
+}
+
+//--------------------------------------------------------------------------------------------------------------------//
+
+//---------------------------------------------------Interact---------------------------------------------------------//
+
+void UInteractComponent::Interact()
+{
+    Server_Interact();
+}
+
+void UInteractComponent::Server_Interact_Implementation()
+{
+    Interact_Internal();
+    Client_Interact();
+}
+
+void UInteractComponent::Client_Interact_Implementation()
+{
+    // Play animation, sound and etc
+}
+
+bool UInteractComponent::Server_Interact_Validate()
+{
+    return true;
+}
+
+void UInteractComponent::Interact_Internal()
+{
+    if(!StatusesComp.IsValid()) return;
+    bool bInteractNow = StatusesComp->GetIsContainStatus(FGameplayTag(InteractNowTag),true);
+    bInteractNow ?  StopInteract() : StartInteract();
+}
+
+//--------------------------------------------------------------------------------------------------------------------//
+
+//------------------------------------------------Interact Check------------------------------------------------------//
+
+void UInteractComponent::Server_SetInteractObject_Implementation(AActor* NewInteractObject)
+{ SetInteractObject_Internal(NewInteractObject); }
+
+bool UInteractComponent::Server_SetInteractObject_Validate(AActor* NewInteractObject)
+{
+    return true;
 }
 
 void UInteractComponent::Server_InteractCheck_Implementation()
 {
+    InteractCheck_Internal();
+}
+
+bool UInteractComponent::Server_InteractCheck_Validate()
+{
+    return true;
+}
+
+void UInteractComponent::InteractCheck()
+{
+    if(!GetOwner()) return;
+
+    if(GetOwnerRole() != ROLE_Authority) Client_InteractCheck();
+    Server_InteractCheck();
+}
+
+void UInteractComponent::Client_InteractCheck_Implementation()
+{
+    InteractCheck_Internal();
+}
+
+void UInteractComponent::InteractCheck_Internal()
+{
     // Check is can interact now
-    const bool bLocalIsValidInteractItem = InteractableObject.Get() && InteractableObject.IsValid();
+    auto LocalResolvedInteractableObject = GetInteractObject();
+    
+    const bool bLocalIsValidInteractItem = LocalResolvedInteractableObject && InteractableObject.IsValid();
     bool bCantCheckNow = false;
     bool bInteractNow = false;
     if(StatusesComp.IsValid())
@@ -160,10 +285,10 @@ void UInteractComponent::Server_InteractCheck_Implementation()
 
     // Find Interactable Object
     UObject* LocalInteractableItem = nullptr;
-    if(LocalOutHit.GetActor()) LocalInteractableItem = GetInteractComponent(LocalOutHit.GetActor());
+    if(LocalOutHit.GetActor()) LocalInteractableItem = GetInteractObject(LocalOutHit.GetActor());
     
     // Cancel if new interact object is different as previous
-    if(bLocalIsValidInteractItem && InteractableObject.Get() != LocalInteractableItem)
+    if(bLocalIsValidInteractItem && LocalResolvedInteractableObject != LocalInteractableItem)
     {
         CancelInteractFromItem();
     }
@@ -176,13 +301,13 @@ void UInteractComponent::Server_InteractCheck_Implementation()
     }
     
     // Save if finded Interact Object is new
-    const bool bLocalIsFindedObjectNew = LocalInteractableItem != InteractableObject.Get();
+    const bool bLocalIsFindedObjectNew = LocalInteractableItem != LocalResolvedInteractableObject;
     
     // Save Interact Object
-    InteractableObject = LocalInteractableItem;
+    Server_SetInteractObject(LocalOutHit.GetActor());
     
     // Execute Trace Hit. Call after find valid InteractableObject
-    IInteractInterface::Execute_TraceHit(InteractableObject.Get(), CurrentHitResult, GetOwner());
+    IInteractInterface::Execute_TraceHit(LocalInteractableItem, CurrentHitResult, GetOwner());
 
     // Show or Hide widget
     const auto LocalIsShowInteractWidget = IInteractWidgetInfoInterface::Execute_GetIsShowInteractWidget(LocalInteractableItem);
@@ -190,7 +315,7 @@ void UInteractComponent::Server_InteractCheck_Implementation()
     // Setup interact widget by interact widget manager
     TSubclassOf<UUserWidget> LocalInteractWidgetRef;
     UObject* LocalInteractWidgetOwnerObject;
-    IInteractWidgetInfoInterface::Execute_GetInteractWidget(InteractableObject.Get(), LocalInteractWidgetRef, LocalInteractWidgetOwnerObject);
+    IInteractWidgetInfoInterface::Execute_GetInteractWidget(LocalInteractableItem, LocalInteractWidgetRef, LocalInteractWidgetOwnerObject);
 
     auto LocalPlayerController = UGameplayStatics::GetPlayerController(GetWorld(),0);
     if(InteractWidgetManager && LocalPlayerController)
@@ -212,19 +337,11 @@ void UInteractComponent::Server_InteractCheck_Implementation()
     CheckCanInteractState();
 }
 
+//--------------------------------------------------------------------------------------------------------------------//
+
 void UInteractComponent::OnFindOrLostInteractObject(const bool bIsFindInteract) const
 {
     bIsFindInteract ? OnFindInteract.Broadcast() : OnLostInteract.Broadcast();
-}
-
-bool UInteractComponent::Server_InteractCheck_Validate()
-{
-    return true;
-}
-
-bool UInteractComponent::Server_Interact_Validate()
-{
-    return true;
 }
 
 void UInteractComponent::SetStopInteractCheck(const bool bIsInteractCheck)
@@ -235,14 +352,14 @@ void UInteractComponent::SetStopInteractCheck(const bool bIsInteractCheck)
         if(!InteractableObject.IsValid()) return;
         CancelInteractFromItem();
         CurrentHitResult = FHitResult();
-        InteractableObject = nullptr;
+        Server_SetInteractObject(nullptr);
     }
 }
 
 void UInteractComponent::CancelInteractFromItem()
 {
     if(!InteractableObject.IsValid()) return;
-    IInteractInterface::Execute_CancelCanInteract(InteractableObject.Get(), CurrentHitResult);
+    IInteractInterface::Execute_CancelCanInteract(GetInteractObject(), CurrentHitResult);
     if(InteractWidgetManager) InteractWidgetManager->HideVisibilityWidget();
     OnFindOrLostInteractObject(false);
 }
@@ -293,7 +410,7 @@ void UInteractComponent::SetInteractCheck(const bool bIsCheckInteract)
     {
         if(!GetWorld()->GetTimerManager().IsTimerActive(CheckInteractTraceHandle))
             GetWorld()->GetTimerManager().SetTimer(CheckInteractTraceHandle, this,
-                &UInteractComponent::Server_InteractCheck, InteractionFrequency, true);
+                &UInteractComponent::InteractCheck, InteractionFrequency, true);
     }
     // Clear timer if stop interact OR force stop interact
     else GetWorld()->GetTimerManager().ClearTimer(CheckInteractTraceHandle);
@@ -302,7 +419,7 @@ void UInteractComponent::SetInteractCheck(const bool bIsCheckInteract)
 // Clear interact info
 void UInteractComponent::ClearCurrentInteractInfo()
 {
-    InteractableObject = nullptr;
+    Server_SetInteractObject(nullptr);
     CurrentHitResult = FHitResult();
     CurrentCanInteractState = ECanInteractState::None;
 }
@@ -311,7 +428,7 @@ void UInteractComponent::ClearCurrentInteractInfo()
 const void UInteractComponent::GetInteractItemWidgetLocation(FVector& WidgetLocation) const
 {
     if(!InteractableObject.IsValid()) WidgetLocation = FVector::Zero();
-    IInteractWidgetInfoInterface::Execute_GetInteractWidgetLocation(InteractableObject.Get(), WidgetLocation);
+    IInteractWidgetInfoInterface::Execute_GetInteractWidgetLocation(GetConstInteractObject(), WidgetLocation);
 }
 
 const ECanInteractState UInteractComponent::GetCurrentInputState() const
@@ -324,7 +441,10 @@ const ECanInteractState UInteractComponent::GetCurrentInputState() const
         
     else
     {
-        const bool bLocalCanInteract = IInteractInterface::Execute_CanInteract(InteractableObject.Get(),CurrentHitResult,GetOwner());
+        auto LocalResolvedInteractableObject = GetConstInteractObject();
+        if(!LocalResolvedInteractableObject) return ECanInteractState::None;
+        
+        const bool bLocalCanInteract = IInteractInterface::Execute_CanInteract(LocalResolvedInteractableObject,CurrentHitResult,GetOwner());
         LocalNewCanInteractState = bLocalCanInteract ? ECanInteractState::CanInteract : ECanInteractState::CanNotInteract;
     }
 
@@ -343,9 +463,12 @@ const void UInteractComponent::CheckCanInteractState()
     }
 }
 
-UActorComponent* UInteractComponent::GetInteractComponent(const AActor* InteractActor) const
+UObject* UInteractComponent::GetInteractObject(AActor* InteractActor) const
 {
     if(!InteractActor) return nullptr;
+    UObject* LocalInteractableObject = InteractActor;
+    if(InteractActor->Implements<UInteractInterface>()) return LocalInteractableObject;
+    
     const auto LocalInteractComponents = InteractActor->GetComponentsByInterface(UInteractInterface::StaticClass());
     if(LocalInteractComponents.IsEmpty()) return nullptr;
     
@@ -356,7 +479,6 @@ UActorComponent* UInteractComponent::GetInteractComponent(const AActor* Interact
     
     return nullptr;
 }
-
 
 #if !UE_BUILD_SHIPPING
     // Debug show logic

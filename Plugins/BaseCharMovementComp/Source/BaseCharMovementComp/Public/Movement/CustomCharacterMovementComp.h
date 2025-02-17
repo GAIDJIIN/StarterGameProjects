@@ -30,21 +30,21 @@ public:
 	#endif
 	
 	// Reset Movement Comp
-	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="MovementInfo")
+	UFUNCTION(Server, Unreliable, WithValidation, BlueprintCallable, Category="MovementInfo")
 		void Server_ResetMovementComp();
-	UFUNCTION(NetMulticast, Reliable, BlueprintCallable, Category="MovementInfo")
+	UFUNCTION(NetMulticast, Unreliable, BlueprintCallable, Category="MovementInfo")
 		void NetMulticast_ResetMovementComp();
 
 	// Setup Movement Comp
-	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="MovementInfo")
+	UFUNCTION(Server, Unreliable, WithValidation, BlueprintCallable, Category="MovementInfo")
 		void Server_SetupMovementComp();
-	UFUNCTION(NetMulticast, Reliable, BlueprintCallable, Category="MovementInfo")
+	UFUNCTION(NetMulticast, Unreliable, BlueprintCallable, Category="MovementInfo")
 		void NetMulticast_SetupMovementComp();
 	
 	
 	// Setter
 
-	UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="MovementInfo")
+	UFUNCTION(Server, Unreliable, WithValidation, BlueprintCallable, Category="MovementInfo")
 		void Server_SetIsShouldRun(const bool NewShouldRun);
 	
 	// Getter

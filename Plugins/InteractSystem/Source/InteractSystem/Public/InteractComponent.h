@@ -1,4 +1,4 @@
-//Florist Game. All rights reserved.
+//GAIDJIIN. All rights reserved.
 
 #pragma once
 
@@ -24,12 +24,10 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnFindInteract);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLostInteract);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnChangeCanInteractState, ECanInteractState, CanInteractState);
 
-
-
 class UStatusesComponent;
 class IInteractInterface;
 
-UCLASS( Blueprintable, ClassGroup=(InteractSystem), meta=(BlueprintSpawnableComponent) )
+UCLASS( Blueprintable, ClassGroup=(InteractSystem), meta=(BlueprintSpawnableComponent))
 class INTERACTSYSTEM_API UInteractComponent : public UActorComponent
 {
 	GENERATED_BODY()
@@ -43,17 +41,20 @@ protected:
 public:
     
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
-
-    // Main Logic
+    virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
     
-    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable,Category="Interact Component")
-		void Server_StartInteract();
-    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable,Category="Interact Component")
-        void Server_StopInteract();
-    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable,Category="Interact Component")
-        void Server_InteractCheck();
-    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable,Category="Interact Component")
-        void Server_Interact();
+    // Main Logic
+
+    // Interact
+
+    UFUNCTION(BlueprintCallable, Category="Interact Component")
+        void StartInteract();
+    UFUNCTION(BlueprintCallable, Category="Interact Component")
+        void StopInteract();
+    UFUNCTION(BlueprintCallable, Category="Interact Component")
+        void Interact();
+    UFUNCTION(BlueprintCallable, Category="Interact Component")
+        void InteractCheck();
 
     // Setter
     
@@ -78,7 +79,7 @@ private:
     // If true - use start point camera location
     UPROPERTY(EditAnywhere, Category="Interact Setup", meta=(AllowPrivateAccess))
         bool bIsUseActorEyes = false;
-    UPROPERTY(EditAnywhere, Category="Interact Setup", meta=(AllowPrivateAccess))
+    UPROPERTY(Replicated, EditAnywhere, Category="Interact Setup", meta=(AllowPrivateAccess))
         bool bStopInteractCheck = false;
     UPROPERTY(EditAnywhere, Category="Interact Setup", meta=(AllowPrivateAccess))
         float MaxInteractionDistance = 1000.f;
@@ -99,27 +100,47 @@ private:
         FGameplayTagContainer CantInteractTag;
 
     // CPP
+    // Service
     
     TWeakObjectPtr<UStatusesComponent> StatusesComp;
-    bool bStopNow = false;
     FTimerHandle CheckInteractTraceHandle;
-    ECanInteractState CurrentCanInteractState = ECanInteractState::None;
+
+    // Replicated
+    
+    UPROPERTY(VisibleAnywhere, Replicated, Category="Service")
+        bool bStopNow = false;
+    UPROPERTY(VisibleAnywhere, Replicated, Category="Service")
+        ECanInteractState CurrentCanInteractState = ECanInteractState::None;
     
     // Widget Info
-    
+
+    // Widget manager for manipulate of interact widgets
+    TObjectPtr<UInteractWidgetManager> InteractWidgetManager = nullptr;
     TObjectPtr<UWidgetComponent> InteractWidgetComp = nullptr;
     
     // Current Interact Info
     // Object for interact now (actor or actor comp)
-    TWeakObjectPtr<UObject> InteractableObject;
-    FHitResult CurrentHitResult;
+    UPROPERTY(VisibleAnywhere, Replicated, Category="Service Interact Info")
+        TWeakObjectPtr<AActor> InteractableObject;
+    UPROPERTY(VisibleAnywhere, Replicated, Category="Service Interact Info")
+        FHitResult CurrentHitResult;
     
     // Functions
-    
+
+    FORCEINLINE bool IsLocallyControlled() const;
     void FirstInitializeComp();
     
     // Interact
 
+    // Internal
+    void StartInteract_Internal();
+    void StopInteract_Internal();
+    void Interact_Internal();
+    void InteractCheck_Internal();
+    void SetInteractObject_Internal(AActor* NewInteractObject) { InteractableObject = NewInteractObject; }
+
+    // Service
+    
     bool TraceFromCamera(FHitResult& OutHit);
     void SetInteractCheck(const bool bIsCheckInteract);
     
@@ -129,9 +150,48 @@ private:
     // Check can interact state
     const void CheckCanInteractState();
     void CancelInteractFromItem();
-    UActorComponent* GetInteractComponent(const AActor* InteractActor) const;
+    // Get Interactable object from actor
+    UObject* GetInteractObject(AActor* InteractActor) const;
+    // Get Interactable object from saved InteractableObject
+    UObject* GetInteractObject() { return GetInteractObject(InteractableObject.Get()); }
+    // Get const Interactable object from saved InteractableObject
+    UObject* GetConstInteractObject() const { return GetInteractObject(InteractableObject.Get()); }
+    
     // Call delegates or find or lost object
     void OnFindOrLostInteractObject(const bool bIsFindInteract) const;
+    
+
+    //--------------------------------------------Replicated Methods--------------------------------------------------//
+
+    // Start Interact
+    UFUNCTION(Server, Unreliable, WithValidation, Category="Interact Component")
+        void Server_StartInteract();
+    UFUNCTION(Client, Unreliable, BlueprintCallable,Category="Interact Component")
+        void Client_StartInteract();
+
+    // Stop Interact
+    UFUNCTION(Server, Unreliable, WithValidation, Category="Interact Component")
+        void Server_StopInteract();
+    UFUNCTION(Client, Unreliable, Category="Interact Component")
+        void Client_StopInteract();
+
+    // Interact
+    UFUNCTION(Server, Unreliable, WithValidation, Category="Interact Component")
+        void Server_Interact();
+    UFUNCTION(Client, Unreliable, Category="Interact Component")
+        void Client_Interact();
+
+    // Interact Check
+    UFUNCTION(Server, Unreliable, WithValidation, Category="Interact Component")
+        void Server_InteractCheck();
+    UFUNCTION(Client, Unreliable, Category="Interact Component")
+        void Client_InteractCheck();
+    UFUNCTION(Server, Unreliable, WithValidation, Category="Interact Component")
+        void Server_SetInteractObject(AActor* NewInteractActor);
+    
+    
+    //--------------------------------------------------------------------------------------------------------------------//
+
     
     // Debug
 
@@ -150,7 +210,5 @@ private:
         FOnLostInteract OnLostInteract;
     UPROPERTY(BlueprintAssignable)
         FOnChangeCanInteractState OnChangeCanInteractState;
-
-    // Widget manager for manipulate of interact widgets
-    TObjectPtr<UInteractWidgetManager> InteractWidgetManager = nullptr;
+    
 };

@@ -79,13 +79,13 @@ public:
         const FText GetStatusesReadableText(const FGameplayTagContainer StatusesToText) const;
     
     // Setter
-    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="Statuses Component|Add Logic")
+    UFUNCTION(Server, Unreliable, WithValidation, BlueprintCallable, Category="Statuses Component|Add Logic")
         void AddConstantStatuses(const FGameplayTagContainer& ConstantStatuses);
-    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="Statuses Component|Add Logic")
+    UFUNCTION(Server, Unreliable, WithValidation, BlueprintCallable, Category="Statuses Component|Add Logic")
         void AddStatusesWithInfo(const FStatusesInfoArray& StatusesToAdd);
-    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="Statuses Component|Remove Logic")
+    UFUNCTION(Server, Unreliable, WithValidation, BlueprintCallable, Category="Statuses Component|Remove Logic")
         void RemoveStatuses(const FGameplayTagContainer& StatusesToRemove);
-    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="Statuses Component|Remove Logic")
+    UFUNCTION(Server, Unreliable, WithValidation, BlueprintCallable, Category="Statuses Component|Remove Logic")
         void RemoveAllStatuses();
 
     // Delegates
