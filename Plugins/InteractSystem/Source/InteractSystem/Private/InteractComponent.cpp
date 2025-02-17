@@ -26,9 +26,27 @@ UInteractComponent::UInteractComponent()
 
 bool UInteractComponent::IsLocallyControlled() const
 {
-    return GetNetMode() == NM_Standalone ||
-        (GetNetMode() == NM_Client && GetOwnerRole() == ROLE_AutonomousProxy) ||
-        (GetOwner()->GetRemoteRole() != ROLE_AutonomousProxy && GetOwnerRole() == ROLE_Authority);
+    auto LocalOwner = GetOwner();
+    if(!LocalOwner) return false;
+
+    const ENetMode OwnerNetMode = LocalOwner->GetNetMode();
+
+    if(OwnerNetMode == NM_Standalone)
+    {
+        return true;
+    }
+
+    if(OwnerNetMode == NM_Client && GetOwnerRole() == ROLE_AutonomousProxy)
+    {
+        return true;
+    }
+
+    if(LocalOwner->GetRemoteRole() != ROLE_AutonomousProxy && GetOwnerRole() == ROLE_Authority)
+    {
+        return true;
+    }
+
+    return false;
 }
 
 // First Initialize needed info
@@ -56,8 +74,9 @@ void UInteractComponent::BeginPlay()
     if(IsLocallyControlled())
     {
         FirstInitializeComp();
-        SetComponentTickEnabled(true);
     }
+
+    SetComponentTickEnabled(true);
 }
 
 void UInteractComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
@@ -133,7 +152,7 @@ void UInteractComponent::StartInteract_Internal()
         if(bShowInteractDebug) GEngine->AddOnScreenDebugMessage(-1, 3.f, FColor::Green,
             FString("Interact With Object!!!"));
         
-        OnSuccessStartInteract.Broadcast();
+        Client_CallOnSuccessStartInteract();
     }
 }
 
@@ -225,9 +244,6 @@ bool UInteractComponent::Server_InteractCheck_Validate()
 
 void UInteractComponent::InteractCheck()
 {
-    if(!GetOwner()) return;
-
-    if(GetOwnerRole() != ROLE_Authority) Client_InteractCheck();
     Server_InteractCheck();
 }
 
@@ -341,10 +357,25 @@ void UInteractComponent::InteractCheck_Internal()
 
 void UInteractComponent::OnFindOrLostInteractObject(const bool bIsFindInteract) const
 {
-    bIsFindInteract ? OnFindInteract.Broadcast() : OnLostInteract.Broadcast();
+    bIsFindInteract ? Client_CallOnFindInteract() : Client_CallOnLostInteract();
 }
 
 void UInteractComponent::SetStopInteractCheck(const bool bIsInteractCheck)
+{
+    Server_SetStopInteractCheck(bIsInteractCheck);
+}
+
+void UInteractComponent::Server_SetStopInteractCheck_Implementation(const bool bIsInteractCheck)
+{
+    SetStopInteractCheck_Internal(bIsInteractCheck);
+}
+
+bool UInteractComponent::Server_SetStopInteractCheck_Validate(const bool bIsInteractCheck)
+{
+    return true;
+}
+
+void UInteractComponent::SetStopInteractCheck_Internal(const bool bIsInteractCheck)
 {
     bStopInteractCheck = bIsInteractCheck;
     if(bStopInteractCheck)
@@ -459,7 +490,7 @@ const void UInteractComponent::CheckCanInteractState()
     if(CurrentCanInteractState != LocalNewCanInteractState)
     {
         CurrentCanInteractState = LocalNewCanInteractState;
-        OnChangeCanInteractState.Broadcast(CurrentCanInteractState);
+        Client_CallOnChangeCanInteractState(CurrentCanInteractState);
     }
 }
 

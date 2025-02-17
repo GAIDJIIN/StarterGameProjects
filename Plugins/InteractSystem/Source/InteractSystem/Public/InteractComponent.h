@@ -58,7 +58,7 @@ public:
 
     // Setter
     
-    UFUNCTION(BlueprintCallable,Category="Interact Component")
+    UFUNCTION(BlueprintCallable, Category="Interact Component")
         void SetStopInteractCheck(const bool bIsInteractCheck);
     UFUNCTION(BlueprintCallable,Category="Interact Component")
         void SetUseActorEyes(bool bNewbIsUseActorEyes) { bIsUseActorEyes = bNewbIsUseActorEyes; }
@@ -138,7 +138,8 @@ private:
     void Interact_Internal();
     void InteractCheck_Internal();
     void SetInteractObject_Internal(AActor* NewInteractObject) { InteractableObject = NewInteractObject; }
-
+    void SetStopInteractCheck_Internal(const bool bIsInteractCheck);
+    
     // Service
     
     bool TraceFromCamera(FHitResult& OutHit);
@@ -188,7 +189,26 @@ private:
         void Client_InteractCheck();
     UFUNCTION(Server, Unreliable, WithValidation, Category="Interact Component")
         void Server_SetInteractObject(AActor* NewInteractActor);
-    
+
+    // Set Interact Check
+    UFUNCTION(Server, Unreliable, WithValidation, BlueprintCallable, Category="Interact Component")
+        void Server_SetStopInteractCheck(const bool bIsInteractCheck);
+
+    // Delegate call methods on client
+    UFUNCTION(Client, Unreliable, Category="Replicate Delegates")
+        void Client_CallOnSuccessStartInteract() const;
+        void Client_CallOnSuccessStartInteract_Implementation() const { OnSuccessStartInteract.Broadcast(); }
+    UFUNCTION(Client, Unreliable, Category="Replicate Delegates")
+        void Client_CallOnFindInteract() const;
+        void Client_CallOnFindInteract_Implementation() const { OnFindInteract.Broadcast(); }
+    UFUNCTION(Client, Unreliable, Category="Replicate Delegates")
+        void Client_CallOnLostInteract() const;
+        void Client_CallOnLostInteract_Implementation() const { OnLostInteract.Broadcast(); }
+    UFUNCTION(Client, Unreliable, Category="Replicate Delegates")
+        void Client_CallOnChangeCanInteractState(ECanInteractState NewCanInteractState) const;
+        void Client_CallOnChangeCanInteractState_Implementation(ECanInteractState NewCanInteractState) const
+        { OnChangeCanInteractState.Broadcast(NewCanInteractState); }
+        
     
     //--------------------------------------------------------------------------------------------------------------------//
 
