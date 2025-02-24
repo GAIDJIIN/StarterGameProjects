@@ -19,6 +19,21 @@ enum class ECanInteractState : uint8
     CanInteract = 1 << 2
 };
 
+UENUM(BlueprintType)
+enum class EFocusInteractVisualizationMode : uint8
+{
+    None = 0 UMETA(Hidden),
+    Widget = 1 << 0,
+    Outliner = 1 << 1
+};
+
+enum class EFocusState
+{
+    None = 0,
+    Find = 1 << 0,
+    Lost = 1 << 1
+};
+
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnSuccessStartInteract);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnFindInteract);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnLostInteract);
@@ -79,6 +94,8 @@ private:
     // If true - use start point camera location
     UPROPERTY(EditAnywhere, Category="Interact Setup", meta=(AllowPrivateAccess))
         bool bIsUseActorEyes = false;
+    UPROPERTY(EditAnywhere, Category="Interact Setup", meta=(AllowPrivateAccess))
+        EFocusInteractVisualizationMode FocusInteractVisualizationMode = EFocusInteractVisualizationMode::Widget;
     UPROPERTY(Replicated, EditAnywhere, Category="Interact Setup", meta=(AllowPrivateAccess))
         bool bStopInteractCheck = false;
     UPROPERTY(EditAnywhere, Category="Interact Setup", meta=(AllowPrivateAccess))
@@ -101,7 +118,8 @@ private:
 
     // CPP
     // Service
-    
+
+    EFocusState FocusState = EFocusState::None;
     TWeakObjectPtr<UStatusesComponent> StatusesComp;
     FTimerHandle CheckInteractTraceHandle;
 
@@ -160,7 +178,8 @@ private:
     
     // Call delegates or find or lost object
     void OnFindOrLostInteractObject(const bool bIsFindInteract) const;
-    
+    // Call on change interact focus
+    void CheckChangeInteractFocusState();
 
     //--------------------------------------------Replicated Methods--------------------------------------------------//
 
@@ -191,9 +210,13 @@ private:
         void Server_SetInteractObject(AActor* NewInteractActor);
 
     // Set Interact Check
-    UFUNCTION(Server, Unreliable, WithValidation, BlueprintCallable, Category="Interact Component")
+    UFUNCTION(Server, Unreliable, WithValidation, Category="Interact Component")
         void Server_SetStopInteractCheck(const bool bIsInteractCheck);
 
+    // Set Interact highlight
+    UFUNCTION(Client, Unreliable, Category="Interact Highlight")
+        void Client_ToggleHighlightMeshes(const AActor* ActorToHighlight, bool bIsHighlight);
+    
     // Delegate call methods on client
     UFUNCTION(Client, Unreliable, Category="Replicate Delegates")
         void Client_CallOnSuccessStartInteract() const;

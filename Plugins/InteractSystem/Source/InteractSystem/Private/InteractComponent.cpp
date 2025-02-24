@@ -7,6 +7,7 @@
 #include "Interfaces/InteractInterface.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "InteractWidgetManager/InteractWidgetManager.h"
+#include "Interfaces/InteractOutlinerInterface.h"
 #include "Interfaces/InteractWidgetInfoInterface.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
@@ -35,7 +36,7 @@ bool UInteractComponent::IsLocallyControlled() const
     {
         return true;
     }
-
+    
     if(OwnerNetMode == NM_Client && GetOwnerRole() == ROLE_AutonomousProxy)
     {
         return true;
@@ -53,13 +54,24 @@ bool UInteractComponent::IsLocallyControlled() const
 void UInteractComponent::FirstInitializeComp()
 {
     if(!GetOwner() || !GetWorld()) return;
-
-    StatusesComp = GetOwner()->FindComponentByClass<UStatusesComponent>();
-
+    
     if(IsLocallyControlled())
     {
-        checkf(InteractWidgetComp && InteractWidgetManager, TEXT("No set Interact Widget Comp or Interact Widget Manager"))
-        InteractWidgetManager->SetupInteractWidgetComp(InteractWidgetComp, GetOwner());
+        if(FocusInteractVisualizationMode == EFocusInteractVisualizationMode::Widget)
+        {
+            checkf(InteractWidgetComp && InteractWidgetManager, TEXT("No set Interact Widget Comp or Interact Widget Manager"))
+            InteractWidgetManager->SetupInteractWidgetComp(InteractWidgetComp, GetOwner());
+        }
+        else
+        {
+            InteractWidgetComp->DestroyComponent();
+            InteractWidgetManager->ConditionalBeginDestroy();
+        }
+    }
+    else
+    {
+        InteractWidgetComp->DestroyComponent();
+        InteractWidgetManager->ConditionalBeginDestroy();
     }
     
     SetInteractCheck(true);
@@ -71,10 +83,8 @@ void UInteractComponent::BeginPlay()
 	SetComponentTickEnabled(false);
 
     // Setup comp only if owner locally controlled
-    if(IsLocallyControlled())
-    {
-        FirstInitializeComp();
-    }
+    StatusesComp = GetOwner()->FindComponentByClass<UStatusesComponent>();
+    FirstInitializeComp();
 
     SetComponentTickEnabled(true);
 }
@@ -100,7 +110,7 @@ void UInteractComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 
 void UInteractComponent::StartInteract()
 {
-    Server_Interact();
+    Server_StartInteract();
 }
 
 void UInteractComponent::Server_StartInteract_Implementation()
@@ -326,18 +336,22 @@ void UInteractComponent::InteractCheck_Internal()
     IInteractInterface::Execute_TraceHit(LocalInteractableItem, CurrentHitResult, GetOwner());
 
     // Show or Hide widget
-    const auto LocalIsShowInteractWidget = IInteractWidgetInfoInterface::Execute_GetIsShowInteractWidget(LocalInteractableItem);
+    auto LocalIsShowInteractWidget = false;
 
-    // Setup interact widget by interact widget manager
-    TSubclassOf<UUserWidget> LocalInteractWidgetRef;
-    UObject* LocalInteractWidgetOwnerObject;
-    IInteractWidgetInfoInterface::Execute_GetInteractWidget(LocalInteractableItem, LocalInteractWidgetRef, LocalInteractWidgetOwnerObject);
-
-    auto LocalPlayerController = UGameplayStatics::GetPlayerController(GetWorld(),0);
-    if(InteractWidgetManager && LocalPlayerController)
+    if(LocalInteractableItem->Implements<UInteractWidgetInfoInterface>())
     {
-        InteractWidgetManager->ToggleVisibilityWidget(LocalPlayerController, LocalInteractWidgetRef, LocalInteractWidgetOwnerObject,
-        GetOwner(), LocalIsShowInteractWidget);
+        LocalIsShowInteractWidget = IInteractWidgetInfoInterface::Execute_GetIsShowInteractWidget(LocalInteractableItem);
+        // Setup interact widget by interact widget manager
+        TSubclassOf<UUserWidget> LocalInteractWidgetRef;
+        UObject* LocalInteractWidgetOwnerObject;
+        IInteractWidgetInfoInterface::Execute_GetInteractWidget(LocalInteractableItem, LocalInteractWidgetRef, LocalInteractWidgetOwnerObject);
+
+        auto LocalPlayerController = UGameplayStatics::GetPlayerController(GetWorld(),0);
+        if(InteractWidgetManager && LocalPlayerController)
+        {
+            InteractWidgetManager->ToggleVisibilityWidget(LocalPlayerController, LocalInteractWidgetRef, LocalInteractWidgetOwnerObject,
+            GetOwner(), LocalIsShowInteractWidget);
+        }
     }
     
     // Set Interact Widget Location if widget comp is valid and InteractWidgetLocation != ComponentLocation()
@@ -347,17 +361,81 @@ void UInteractComponent::InteractCheck_Internal()
         InteractWidgetComp->SetWorldLocation(LocalInteractItemWidgetLocation);
 
     // Call is find new interact object
-    if(bLocalIsFindedObjectNew) OnFindOrLostInteractObject(true);
+    if(bLocalIsFindedObjectNew)
+    {
+        FocusState = EFocusState::None;
+        OnFindOrLostInteractObject(true);
+    }
     
     // Check Can Interact State - call in end after all calculations
     CheckCanInteractState();
+
+    // Check is changed interact focus state
+    CheckChangeInteractFocusState();
 }
 
 //--------------------------------------------------------------------------------------------------------------------//
 
+// Set Interact highlight
+void UInteractComponent::Client_ToggleHighlightMeshes_Implementation(const AActor* ActorToHighlight,
+    bool bIsHighlight)
+{
+    if(!IsLocallyControlled() || !ActorToHighlight || FocusInteractVisualizationMode != EFocusInteractVisualizationMode::Outliner) return;
+    
+    if(!ActorToHighlight) return;
+
+    // If no implement interface needed for highlight - return  
+    if(!ActorToHighlight->Implements<UInteractOutlinerInterface>()) return;
+
+    const auto LocalHighlightMeshes = IInteractOutlinerInterface::Execute_GetComponentsForHighlight(ActorToHighlight);
+
+    // Toggle highlight state meshes
+    for (const auto& LocalHighlightMesh : LocalHighlightMeshes)
+    {
+        if (!LocalHighlightMesh) return;
+
+        LocalHighlightMesh->SetRenderCustomDepth(bIsHighlight);
+        LocalHighlightMesh->CustomDepthStencilValue = bIsHighlight ? 252 : 0;
+    }
+}
+
 void UInteractComponent::OnFindOrLostInteractObject(const bool bIsFindInteract) const
 {
     bIsFindInteract ? Client_CallOnFindInteract() : Client_CallOnLostInteract();
+}
+
+void UInteractComponent::CheckChangeInteractFocusState()
+{
+    // Check is changed interact focus state
+    switch (CurrentCanInteractState)
+    {
+    case ECanInteractState::None:
+    case ECanInteractState::UsedNow:
+    case ECanInteractState::CanNotInteract:
+        {
+            if(FocusState == EFocusState::None || FocusState == EFocusState::Find)
+            {
+                IInteractInterface::Execute_OnInteractTargetFocusChanged(InteractableObject.Get(), false, CurrentHitResult, GetOwner());
+                Client_ToggleHighlightMeshes(InteractableObject.Get(), false);
+                FocusState = EFocusState::Lost;
+            }
+            break;
+        }
+        
+    case ECanInteractState::CanInteract:
+        {
+            if(FocusState == EFocusState::None || FocusState == EFocusState::Lost)
+            {
+                IInteractInterface::Execute_OnInteractTargetFocusChanged(InteractableObject.Get(), true, CurrentHitResult, GetOwner());
+                Client_ToggleHighlightMeshes(InteractableObject.Get(), true);
+                FocusState = EFocusState::Find;
+            }
+            break;
+        }
+        
+    default:
+        break;
+    }
 }
 
 void UInteractComponent::SetStopInteractCheck(const bool bIsInteractCheck)
@@ -392,6 +470,11 @@ void UInteractComponent::CancelInteractFromItem()
     if(!InteractableObject.IsValid()) return;
     IInteractInterface::Execute_CancelCanInteract(GetInteractObject(), CurrentHitResult);
     if(InteractWidgetManager) InteractWidgetManager->HideVisibilityWidget();
+    
+    IInteractInterface::Execute_OnInteractTargetFocusChanged(InteractableObject.Get(), false, CurrentHitResult, GetOwner());
+    Client_ToggleHighlightMeshes(InteractableObject.Get(), false);
+    FocusState = EFocusState::None;
+    
     OnFindOrLostInteractObject(false);
 }
 
@@ -459,6 +542,8 @@ void UInteractComponent::ClearCurrentInteractInfo()
 const void UInteractComponent::GetInteractItemWidgetLocation(FVector& WidgetLocation) const
 {
     if(!InteractableObject.IsValid()) WidgetLocation = FVector::Zero();
+    if(!InteractableObject.Get()->Implements<UInteractWidgetInfoInterface>()) return;
+    
     IInteractWidgetInfoInterface::Execute_GetInteractWidgetLocation(GetConstInteractObject(), WidgetLocation);
 }
 

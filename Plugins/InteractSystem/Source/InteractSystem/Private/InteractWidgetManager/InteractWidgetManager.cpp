@@ -84,10 +84,11 @@ bool UInteractWidgetManager::GetIsWidgetVisibleNow() const
 	return InteractWidgetComp->GetWidget() && !InteractWidgetComp->bHiddenInGame;
 }
 
+// @todo Fix always 
 // Get debug string of interact widgets
 FString UInteractWidgetManager::GetDebugInteractWidgetsString() const
 {
-	if(InteractWidgetsPool.IsEmpty()) return "No Interact Widgets in pool!!!";
+	/*if(InteractWidgetsPool.IsEmpty()) return "No Interact Widgets in pool!!!";
 	auto It = InteractWidgetsPool.CreateConstIterator();
 	if(!It) return "No Valid Widgets Pool Iterator";
 	
@@ -105,5 +106,7 @@ FString UInteractWidgetManager::GetDebugInteractWidgetsString() const
 	}
 	LocalDebugString += "\n--------------------------------------------------------------------------------------";
 
-	return LocalDebugString;
+	return LocalDebugString;*/
+
+	return "DEPRECATE DEBUG FROM INTERACT WIDGET MANAGER";
 }
