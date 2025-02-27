@@ -9,8 +9,6 @@
 #include "InteractWidgetManager/InteractWidgetManager.h"
 #include "Interfaces/InteractOutlinerInterface.h"
 #include "Interfaces/InteractWidgetInfoInterface.h"
-#include "Kismet/GameplayStatics.h"
-#include "Kismet/KismetMathLibrary.h"
 #include "Net/UnrealNetwork.h"
 
 UInteractComponent::UInteractComponent()
@@ -20,8 +18,6 @@ UInteractComponent::UInteractComponent()
     if(IsLocallyControlled())
     {
         InteractWidgetComp = CreateDefaultSubobject<UWidgetComponent>("WidgetComponent");
-
-        InteractWidgetManager = NewObject<UInteractWidgetManager>(this, UInteractWidgetManager::StaticClass(),"InteractWidgetManager");
     }
 }
 
@@ -59,19 +55,20 @@ void UInteractComponent::FirstInitializeComp()
     {
         if(FocusInteractVisualizationMode == EFocusInteractVisualizationMode::Widget)
         {
+            InteractWidgetManager = NewObject<UInteractWidgetManager>(this, UInteractWidgetManager::StaticClass(),"InteractWidgetManager");
             checkf(InteractWidgetComp && InteractWidgetManager, TEXT("No set Interact Widget Comp or Interact Widget Manager"))
             InteractWidgetManager->SetupInteractWidgetComp(InteractWidgetComp, GetOwner());
         }
         else
         {
-            if(InteractWidgetComp) InteractWidgetComp->DestroyComponent();
             if(InteractWidgetManager) InteractWidgetManager->ConditionalBeginDestroy();
+            if(InteractWidgetComp) InteractWidgetComp->DestroyComponent();
         }
     }
     else
     {
-        if(InteractWidgetComp) InteractWidgetComp->DestroyComponent();
         if(InteractWidgetManager) InteractWidgetManager->ConditionalBeginDestroy();
+        if(InteractWidgetComp) InteractWidgetComp->DestroyComponent();
     }
     
     SetInteractCheck(true);
@@ -346,11 +343,14 @@ void UInteractComponent::InteractCheck_Internal()
         UObject* LocalInteractWidgetOwnerObject;
         IInteractWidgetInfoInterface::Execute_GetInteractWidget(LocalInteractableItem, LocalInteractWidgetRef, LocalInteractWidgetOwnerObject);
 
-        auto LocalPlayerController = UGameplayStatics::GetPlayerController(GetWorld(),0);
-        if(InteractWidgetManager && LocalPlayerController)
+        if(auto LocalOwnerPawn = Cast<APawn>(GetOwner()))
         {
-            InteractWidgetManager->ToggleVisibilityWidget(LocalPlayerController, LocalInteractWidgetRef, LocalInteractWidgetOwnerObject,
-            GetOwner(), LocalIsShowInteractWidget);
+            auto LocalPlayerController = LocalOwnerPawn->GetController<APlayerController>();
+            if(InteractWidgetManager && LocalPlayerController)
+            {
+                InteractWidgetManager->ToggleVisibilityWidget(LocalPlayerController, LocalInteractWidgetRef, LocalInteractWidgetOwnerObject,
+                GetOwner(), LocalIsShowInteractWidget);
+            }
         }
     }
     
@@ -481,19 +481,25 @@ void UInteractComponent::CancelInteractFromItem()
 // Trace from camera
 bool UInteractComponent::TraceFromCamera(FHitResult& OutHit)
 {
-    auto LocalController = UGameplayStatics::GetPlayerController(GetWorld(),0);
-    if(!LocalController || !LocalController->PlayerCameraManager || !GetWorld()) return false;
-
-    // Calculate Start End loc
     FVector PlayerViewLoc;
     FRotator PlayerViewRot;
-    LocalController->GetPlayerViewPoint(PlayerViewLoc,PlayerViewRot);
-    FVector ActorEyesLoc;
-    FRotator ActorEyesRot;
-    GetOwner()->GetActorEyesViewPoint(ActorEyesLoc,ActorEyesRot);
-    const FVector Start = bIsUseActorEyes ? ActorEyesLoc : PlayerViewLoc;
-    const FVector End = (bIsUseActorEyes ?
-        UKismetMathLibrary::FindClosestPointOnLine(ActorEyesLoc,PlayerViewLoc,PlayerViewRot.Vector()) : PlayerViewLoc) + PlayerViewRot.Vector()*MaxInteractionDistance;
+
+    // If no use actor eyes - try take player view point
+    if(!bIsUseActorEyes)
+    {
+        if(auto LocalOwnerPawn = Cast<APawn>(GetOwner()))
+        {
+            auto LocalPlayerController = LocalOwnerPawn->GetController<APlayerController>();
+            if(!LocalPlayerController || !LocalPlayerController->PlayerCameraManager || !GetWorld()) return false;
+            LocalPlayerController->GetPlayerViewPoint(PlayerViewLoc,PlayerViewRot);
+        }
+    }
+    // Else use actor eyes
+    else GetOwner()->GetActorEyesViewPoint(PlayerViewLoc,PlayerViewRot);
+
+    // Calculate Start End loc
+    const FVector Start = PlayerViewLoc;
+    const FVector End = PlayerViewLoc + PlayerViewRot.Vector()*MaxInteractionDistance;
     
     const bool bHitTrace = UKismetSystemLibrary::SphereTraceSingle
     (
@@ -504,13 +510,15 @@ bool UInteractComponent::TraceFromCamera(FHitResult& OutHit)
         UEngineTypes::ConvertToTraceType(InteractChannel),
         false,
         {GetOwner()},
-        bShowInteractDebug ? EDrawDebugTrace::ForDuration : EDrawDebugTrace::None,
+        EDrawDebugTrace::None,
         OutHit,
         true,
         FLinearColor::Red,
         FLinearColor::Green,
         InteractionFrequency
         );
+
+    Client_ShowDebugInteractLine(OutHit);
     
     return bHitTrace;
 }
@@ -520,7 +528,7 @@ void UInteractComponent::SetInteractCheck(const bool bIsCheckInteract)
     if(!GetWorld()) return;
 
     // Set timer to check trace
-    if(bIsCheckInteract && !bStopInteractCheck)
+    if(bIsCheckInteract && !bStopInteractCheck && GetOwnerRole() == ROLE_Authority)
     {
         if(!GetWorld()->GetTimerManager().IsTimerActive(CheckInteractTraceHandle))
             GetWorld()->GetTimerManager().SetTimer(CheckInteractTraceHandle, this,
@@ -597,6 +605,26 @@ UObject* UInteractComponent::GetInteractObject(AActor* InteractActor) const
 }
 
 #if !UE_BUILD_SHIPPING
+
+    // Debug Show Trace
+    void UInteractComponent::Client_ShowDebugInteractLine_Implementation(const FHitResult& HitResult)
+    {
+        if(!bShowInteractDebug) return;
+    
+        FVector Start = HitResult.TraceStart; FVector End = HitResult.TraceEnd;
+        FVector Direction = (End-Start).GetSafeNormal();
+        bool bHitTrace = HitResult.bBlockingHit;
+        float LocalAllDistance = FVector::Distance(Start, End);
+        // Show debug on locally controlled on client
+        if(IsLocallyControlled())
+        {
+            FVector LocalEndPoint = HitResult.Location;
+            float LocalDistanceTo = bHitTrace ? HitResult.Distance : LocalAllDistance;
+            DrawDebugCylinder(GetWorld(), Start, Start + Direction * LocalDistanceTo, MaxInteractionRadius, 12, FColor::Red, false, InteractionFrequency);
+            if(bHitTrace) DrawDebugCylinder(GetWorld(), LocalEndPoint, LocalEndPoint + Direction * (LocalAllDistance - HitResult.Distance), MaxInteractionRadius, 12, FColor::Green, false, InteractionFrequency);
+        }
+    }
+
     // Debug show logic
     void UInteractComponent::ShowDebug()
     {

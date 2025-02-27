@@ -231,7 +231,10 @@ private:
         void Client_CallOnChangeCanInteractState(ECanInteractState NewCanInteractState) const;
         void Client_CallOnChangeCanInteractState_Implementation(ECanInteractState NewCanInteractState) const
         { OnChangeCanInteractState.Broadcast(NewCanInteractState); }
-        
+
+    // Debug
+    UFUNCTION(Client, Unreliable, Category="Debug")
+        void Client_ShowDebugInteractLine(const FHitResult& HitResult);
     
     //--------------------------------------------------------------------------------------------------------------------//
 
