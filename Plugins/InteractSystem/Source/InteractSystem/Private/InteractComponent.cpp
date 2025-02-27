@@ -64,14 +64,14 @@ void UInteractComponent::FirstInitializeComp()
         }
         else
         {
-            InteractWidgetComp->DestroyComponent();
-            InteractWidgetManager->ConditionalBeginDestroy();
+            if(InteractWidgetComp) InteractWidgetComp->DestroyComponent();
+            if(InteractWidgetManager) InteractWidgetManager->ConditionalBeginDestroy();
         }
     }
     else
     {
-        InteractWidgetComp->DestroyComponent();
-        InteractWidgetManager->ConditionalBeginDestroy();
+        if(InteractWidgetComp) InteractWidgetComp->DestroyComponent();
+        if(InteractWidgetManager) InteractWidgetManager->ConditionalBeginDestroy();
     }
     
     SetInteractCheck(true);
