@@ -30,6 +30,8 @@ struct FTemporaryStatusInfo
 
     FTemporaryStatusInfo(const FGameplayTag NewTemporaryStatus, const FTimerHandle NewTemporaryStatusTimerHandle) :
     TemporaryStatus(NewTemporaryStatus), TemporaryStatusTimerHandle(NewTemporaryStatusTimerHandle) {}
+    
+    FTemporaryStatusInfo(const FGameplayTag NewTemporaryStatus) : TemporaryStatus(NewTemporaryStatus) {}
 	
 };
 
@@ -58,6 +60,8 @@ public:
     // Getter
     // Get Statuses Info
     UFUNCTION(BlueprintCallable, Category="Statuses Component|Getter")
+        FGameplayTag GetCurrentActiveStatus() const { return CurrentActiveStatus; }
+    UFUNCTION(BlueprintCallable, Category="Statuses Component|Getter")
         bool GetStatusesInfo(const FGameplayTagContainer& StatusesToGet, TArray<FStatusesInfo>& ReturnStatuses) const;
     UFUNCTION(BlueprintCallable, Category="Statuses Component|Getter")
         bool GetStatusState(const FGameplayTag& StatusToCheck, TEnumAsByte<EStatusState>& StatusState) const;
@@ -73,19 +77,25 @@ public:
         bool GetIsContainStatus(const FGameplayTag& StatusToFind, const bool ExactCheck = true, const bool InverseCondition = false) const;
     UFUNCTION(BlueprintCallable, Category="Statuses Component|Getter")
         bool GetIsContainStatuses(const FGameplayTagContainer& StatusesToFind, const bool CheckAll = false, const bool ExactCheck = true, const bool InverseCondition = false) const;
-
+    UFUNCTION(BlueprintCallable, Category="Statuses Component|Getter")
+        bool GetIsEqualCurrentActiveStatus(const FGameplayTag& StatusToCompare) { return StatusToCompare == CurrentActiveStatus; }
+    
     // Get Debug Info
     UFUNCTION(BlueprintCallable, Category="Statuses Component|Getter|Debug Info")
         const FText GetStatusesReadableText(const FGameplayTagContainer StatusesToText) const;
     
     // Setter
-    UFUNCTION(Server, Unreliable, WithValidation, BlueprintCallable, Category="Statuses Component|Add Logic")
+    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="Statuses Component|Add Logic")
+        void ChangeOrAddCurrentActiveStatus(const FGameplayTag& NewCurrentActiveStatus);
+    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="Statuses Component|Add Logic")
         void AddConstantStatuses(const FGameplayTagContainer& ConstantStatuses);
-    UFUNCTION(Server, Unreliable, WithValidation, BlueprintCallable, Category="Statuses Component|Add Logic")
+    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="Statuses Component|Add Logic")
         void AddStatusesWithInfo(const FStatusesInfoArray& StatusesToAdd);
-    UFUNCTION(Server, Unreliable, WithValidation, BlueprintCallable, Category="Statuses Component|Remove Logic")
+    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="Statuses Component|Remove Logic")
+        void RemoveActiveStatus();
+    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="Statuses Component|Remove Logic")
         void RemoveStatuses(const FGameplayTagContainer& StatusesToRemove);
-    UFUNCTION(Server, Unreliable, WithValidation, BlueprintCallable, Category="Statuses Component|Remove Logic")
+    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="Statuses Component|Remove Logic")
         void RemoveAllStatuses();
 
     // Delegates
@@ -102,7 +112,9 @@ private:
     // Statuses Info
     UPROPERTY(Replicated)
         FGameplayTagContainer Statuses;
-
+    // Current active status - work as enum for current status
+    UPROPERTY(Replicated)
+        FGameplayTag CurrentActiveStatus;
     UPROPERTY(Replicated)
         TArray<FTemporaryStatusInfo> TemporaryTags;
 

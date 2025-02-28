@@ -27,6 +27,7 @@ void UStatusesComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& O
 	// Replicate statuses
 	DOREPLIFETIME(UStatusesComponent, Statuses);
 	DOREPLIFETIME(UStatusesComponent, TemporaryTags);
+	DOREPLIFETIME(UStatusesComponent, CurrentActiveStatus);
 }
 
 // Getter Info
@@ -152,6 +153,18 @@ void UStatusesComponent::AddConstantStatuses_Implementation(const FGameplayTagCo
 	AddStatuses(ConstantStatuses);
 }
 
+void UStatusesComponent::ChangeOrAddCurrentActiveStatus_Implementation(const FGameplayTag& NewCurrentActiveStatus)
+{
+	
+	// Remove old current active status
+	if(GetIsEqualCurrentActiveStatus(NewCurrentActiveStatus)) RemoveActiveStatus();
+
+	// Add new current active status
+	AddConstantStatuses(NewCurrentActiveStatus.GetSingleTagContainer());
+
+	CurrentActiveStatus = NewCurrentActiveStatus;
+}
+
 void UStatusesComponent::AddStatusesWithInfo_Implementation(const FStatusesInfoArray& StatusesToAdd)
 {
 	if (StatusesToAdd.StatusesInfo.IsEmpty()) return;
@@ -211,6 +224,11 @@ bool UStatusesComponent::AddStatuses(const FGameplayTagContainer& StatusesToAdd)
 	return true;
 }
 
+void UStatusesComponent::RemoveActiveStatus_Implementation()
+{
+	RemoveStatuses(CurrentActiveStatus.GetSingleTagContainer());
+}
+
 void UStatusesComponent::RemoveStatuses_Implementation(const FGameplayTagContainer& StatusesToRemove)
 {
 	if (!GetIsContainStatuses(StatusesToRemove, false, true) || !StatusesToRemove.IsValid()) return;
@@ -221,6 +239,10 @@ void UStatusesComponent::RemoveStatuses_Implementation(const FGameplayTagContain
 		RemovedTag.AddTag(Tag);
 		ClearTemporaryStatusTimer(Tag);
 	}
+
+	// If Statuses to remove has active state - remove status
+	if(StatusesToRemove.HasTag(CurrentActiveStatus)) CurrentActiveStatus = FGameplayTag();
+	
 	if (RemovedTag.IsEmpty()) return;
 	Statuses.RemoveTags(RemovedTag);
 	OnRemoveStatuses.Broadcast(RemovedTag);
@@ -265,8 +287,8 @@ bool UStatusesComponent::MakeTemporaryStatus(const FGameplayTag& StatusToAdd, co
 {
 	if(!GetWorld()) return false;
 	const FStatusesInfo LocalAddTempTag(StatusToAdd.GetSingleTagContainer(),EStatusState::Temporary,TimeToDeleteStatus);
-	const bool bLocalAddStatus = AddStatus(LocalAddTempTag);
-	if (!bClearTimer && !bLocalAddStatus) return false;
+	AddStatus(LocalAddTempTag);
+	if (!bClearTimer && TemporaryTags.Contains(StatusToAdd)) return false;
 	ClearTemporaryStatusTimer(StatusToAdd);
 	FTimerHandle LocalHandle;
 	FTimerDelegate TemporaryTagDelegate;
@@ -300,7 +322,8 @@ bool UStatusesComponent::MakeTemporaryStatus(const FGameplayTag& StatusToAdd, co
 		
 		UKismetSystemLibrary::PrintString(
 			GetWorld(),
-			"Statuses Info:\n--------------------------------\n" + DebugStringConstantTags + "\n" + DebugStringTemporaryTags + "--------------------------------\n",
+			"Statuses Info:\n--------------------------------\n" + DebugStringConstantTags + "\n" + DebugStringTemporaryTags +
+			"Current Active Status : " + CurrentActiveStatus.ToString() + "\n--------------------------------\n",
 			true,
 			true,
 			FLinearColor::Red,
@@ -316,9 +339,17 @@ const FText UStatusesComponent::GetStatusesReadableText(const FGameplayTagContai
 }
 
 
-
-
 // Validate Methods
+
+bool UStatusesComponent::RemoveActiveStatus_Validate()
+{
+	return true;
+}
+
+bool UStatusesComponent::ChangeOrAddCurrentActiveStatus_Validate(const FGameplayTag& NewCurrentActiveStatus)
+{
+	return true;
+}
 
 bool UStatusesComponent::AddConstantStatuses_Validate(const FGameplayTagContainer& ConstantStatuses)
 {
