@@ -85,8 +85,9 @@ public:
         const FText GetStatusesReadableText(const FGameplayTagContainer StatusesToText) const;
     
     // Setter
-    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="Statuses Component|Add Logic")
-        void ChangeOrAddCurrentActiveStatus(const FGameplayTag& NewCurrentActiveStatus);
+    // If bIsChangeActiveStatus == true - remove previous active status and set new, else add new active status 
+    UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="Statuses Component|Add Logic", meta=(AdvancedDisplay="bIsChangeActiveStatus"))
+        void ChangeOrAddCurrentActiveStatus(const FGameplayTag& NewCurrentActiveStatus, bool bIsChangeActiveStatus = true);
     UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="Statuses Component|Add Logic")
         void AddConstantStatuses(const FGameplayTagContainer& ConstantStatuses);
     UFUNCTION(Server, Reliable, WithValidation, BlueprintCallable, Category="Statuses Component|Add Logic")

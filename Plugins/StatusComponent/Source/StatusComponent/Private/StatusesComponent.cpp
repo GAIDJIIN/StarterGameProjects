@@ -153,11 +153,11 @@ void UStatusesComponent::AddConstantStatuses_Implementation(const FGameplayTagCo
 	AddStatuses(ConstantStatuses);
 }
 
-void UStatusesComponent::ChangeOrAddCurrentActiveStatus_Implementation(const FGameplayTag& NewCurrentActiveStatus)
+void UStatusesComponent::ChangeOrAddCurrentActiveStatus_Implementation(const FGameplayTag& NewCurrentActiveStatus, bool bIsChangeActiveStatus)
 {
 	
 	// Remove old current active status
-	if(GetIsEqualCurrentActiveStatus(NewCurrentActiveStatus)) RemoveActiveStatus();
+	if(!GetIsEqualCurrentActiveStatus(NewCurrentActiveStatus) && bIsChangeActiveStatus) RemoveActiveStatus();
 
 	// Add new current active status
 	AddConstantStatuses(NewCurrentActiveStatus.GetSingleTagContainer());
@@ -346,7 +346,7 @@ bool UStatusesComponent::RemoveActiveStatus_Validate()
 	return true;
 }
 
-bool UStatusesComponent::ChangeOrAddCurrentActiveStatus_Validate(const FGameplayTag& NewCurrentActiveStatus)
+bool UStatusesComponent::ChangeOrAddCurrentActiveStatus_Validate(const FGameplayTag& NewCurrentActiveStatus, bool bIsChangeActiveStatus)
 {
 	return true;
 }
