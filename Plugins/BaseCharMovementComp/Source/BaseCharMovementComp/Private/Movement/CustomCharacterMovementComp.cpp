@@ -2,7 +2,6 @@
 
 
 #include "Movement/CustomCharacterMovementComp.h"
-#include "Movement/MovementInfoInterface.h"
 #include "Kismet/GameplayStatics.h"
 #include "Net/UnrealNetwork.h"
 
@@ -36,10 +35,18 @@ void UCustomCharacterMovementComp::CalculateMovementInfo()
 	if(PawnOwner && PawnOwner->IsLocallyControlled()) CalculateCameraShakeBySpeed(); // Calculate camera shake by walk
 }
 
+float UCustomCharacterMovementComp::GetMaxSpeedByMovementMode() const
+{
+	const float DefaultSpeed = Super::GetMaxSpeed();
+	bool bLocalIsHasMovementSpeed = false;
+	const float MaxSpeedByMovementTag = CurrentMaxSpeedByMovementTag.GetMaxMovementSpeed(MovementMode, IsCrouching(),bLocalIsHasMovementSpeed);
+
+	return bLocalIsHasMovementSpeed ? MaxSpeedByMovementTag : DefaultSpeed;
+}
+
 float UCustomCharacterMovementComp::GetMaxSpeed() const
 {
 	const float DefaultSpeed = Super::GetMaxSpeed();
-
 	switch(MovementMode)
 	{
 		case MOVE_Walking:
@@ -56,12 +63,18 @@ float UCustomCharacterMovementComp::GetMaxSpeed() const
 	}
 }
 
+void UCustomCharacterMovementComp::ToggleCurrentMovementTag_Implementation(FGameplayTag NewMovementTag, bool bIsAdd)
+{
+	Server_ToggleCurrentMovementTag(NewMovementTag, bIsAdd);
+}
+
 void UCustomCharacterMovementComp::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
 	DOREPLIFETIME(UCustomCharacterMovementComp, CurrentMaxSpeed);
-	DOREPLIFETIME(UCustomCharacterMovementComp, bShouldRun);
+	DOREPLIFETIME(UCustomCharacterMovementComp, CurrentMovementTags);
+	DOREPLIFETIME(UCustomCharacterMovementComp, CurrentMaxSpeedByMovementTag);
 }
 
 
@@ -69,13 +82,14 @@ void UCustomCharacterMovementComp::GetLifetimeReplicatedProps(TArray<FLifetimePr
 void UCustomCharacterMovementComp::Server_ResetMovementComp_Implementation()
 {
 	NetMulticast_ResetMovementComp();
+
+	CurrentMaxSpeed = Super::GetMaxSpeed();
+	CurrentMaxSpeedByMovementTag = FMovementInfo_Array();
+	CurrentMovementTags = FGameplayTagContainer();
 }
 
 void UCustomCharacterMovementComp::NetMulticast_ResetMovementComp_Implementation()
 {
-	bShouldRun = false;
-	CurrentMaxSpeed = Super::GetMaxSpeed();
-	
 	if(GetWorld())
 	{
 		// Clear calculate speed timer handle
@@ -120,41 +134,45 @@ bool UCustomCharacterMovementComp::Server_ResetMovementComp_Validate()
 	return true;
 }
 
-void UCustomCharacterMovementComp::Server_SetIsShouldRun_Implementation(const bool NewShouldRun)
+void UCustomCharacterMovementComp::Server_ToggleCurrentMovementTag_Implementation(FGameplayTag NewMovementTag,
+	bool bIsAdd)
 {
-	bShouldRun = NewShouldRun;
+	bool bLocalIsContainsMovementTag = CurrentMovementTags.HasTagExact(NewMovementTag);
+	// Add or Remove new movement tag
+	if (bIsAdd) CurrentMovementTags.AddTag(NewMovementTag);
+	else CurrentMovementTags.RemoveTag(NewMovementTag);
+
+	if (MaxWalkSpeedByTag.Contains(NewMovementTag) && NewMovementTag.IsValid())
+	{
+		// Set new movement speed by tag or set last added movement speed by last added tag if bIsAdd == false
+		if (bIsAdd)
+		{
+			// Add new movement speed if is not already added
+			if (!bLocalIsContainsMovementTag) CurrentMaxSpeedByMovementTag = MaxWalkSpeedByTag.FindRef(NewMovementTag);
+		}
+		else
+		{
+			// Set last added movement speed
+			if (!CurrentMovementTags.IsEmpty()) CurrentMaxSpeedByMovementTag = MaxWalkSpeedByTag.FindRef(CurrentMovementTags.GetGameplayTagArray().Last());
+		}
+	}
+	else CurrentMaxSpeedByMovementTag = FMovementInfo_Array();
 }
 
-bool UCustomCharacterMovementComp::Server_SetIsShouldRun_Validate(const bool NewShouldRun)
+bool UCustomCharacterMovementComp::Server_ToggleCurrentMovementTag_Validate(FGameplayTag NewMovementTag, bool bIsAdd)
 {
 	return true;
-}
-
-bool UCustomCharacterMovementComp::GetIsShouldRun_Implementation() const
-{
-	if(GetOwner()->Implements<UMovementInfoInterface>())
-	{ return IMovementInfoInterface::Execute_GetIsShouldRun(GetOwner()); }
-	
-	return bShouldRun;
 }
 
 float UCustomCharacterMovementComp::GetMaxSpeedByDirection() const
 {
 	if(!UpdatedComponent) return 0.f;
-
 	const auto LocalCalculatedDirectionAngle = GetDirection();
-
-	#if !UE_BUILD_SHIPPING
-		if(bShowDebug)
-		{
-			GEngine->AddOnScreenDebugMessage(-1, CheckInfoFreq + 0.01f, FColor::Emerald,
-				"DotProductAngle - " + FString::SanitizeFloat(LocalCalculatedDirectionAngle));
-		}
-	#endif
-	
 	const auto LocalDefaultSpeed = Super::GetMaxSpeed();
-	const auto LocalSpeedByDirection = GetIsShouldRun() ? LocalDefaultSpeed : LocalDefaultSpeed / 2;
-	const auto LocalFullSpeed = GetIsShouldRun() ? (IsCrouching() ? RunSpeedCrouched : RunSpeed) : LocalDefaultSpeed;
+	const auto LocalMaxSpeedByMovementSpeed = GetMaxSpeedByMovementMode();
+	const auto LocalFinalMaxSpeed = CurrentMovementTags.IsValid() ? LocalMaxSpeedByMovementSpeed : LocalDefaultSpeed;
+	const auto LocalSpeedByDirection = LocalFinalMaxSpeed / 2;
+	const auto LocalFullSpeed = LocalFinalMaxSpeed;
 	
 	return FMath::GetMappedRangeValueClamped<float>(TRange<float>(0.f, 180.f), TRange<float>(LocalFullSpeed,LocalSpeedByDirection), FMath::Abs(LocalCalculatedDirectionAngle));
 }
@@ -188,7 +206,6 @@ float UCustomCharacterMovementComp::GetDirection() const
 
 	return 0.f;
 }
-
 
 TSubclassOf<UCameraShakeBase> UCustomCharacterMovementComp::GetRecursiveCameraShakeBaseIndex(TArray<float> CameraShakeSpeedArray)
 {
@@ -267,18 +284,23 @@ void UCustomCharacterMovementComp::PostEditChangeProperty(FPropertyChangedEvent&
 }
 #endif
 
-
 // Show Debug
 
 #if !UE_BUILD_SHIPPING
 void UCustomCharacterMovementComp::ShowDebug()
 {
 	if(!bShowDebug) return;
+	if (GetPawnOwner())
+	{
+		if (!GetPawnOwner()->IsLocallyControlled()) return;
+	}
 	
-	FString LocalText = "\nCurrent Max Speed = " + FString::SanitizeFloat(CurrentMaxSpeed);
-	LocalText += "\n----------------------------Camera Shake Class----------------------------";
+	FString LocalText = "\n----------------------------Custom Movement Component Debug----------------------------";
+	LocalText += "\nCurrent Max Speed = " + FString::SanitizeFloat(CurrentMaxSpeed);
 	LocalText += "\nShake Class = " + GetNameSafe(CurrentCameraShake.GetClass());
 	LocalText += "\nCurrent Speed = " + FString::SanitizeFloat(Velocity.Size2D());
+	LocalText += "\nCurrent Movement Tags = " + CurrentMovementTags.ToString();
+	LocalText += "\nDot Product Angle = " + FString::SanitizeFloat(GetDirection());
 	LocalText += "\n--------------------------------------------------------------------------";
 
 	GEngine->AddOnScreenDebugMessage(-1, 0.f, FColor::Emerald, LocalText);

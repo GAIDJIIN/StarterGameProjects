@@ -3,14 +3,59 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "GameplayTagContainer.h"
+#include "MovementComponentInteractInterface.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "CustomCharacterMovementComp.generated.h"
 
-
 struct FActorComponentTickFunction;
 
+USTRUCT(BlueprintType)
+struct FMovementInfo
+{
+	GENERATED_BODY()
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+		TEnumAsByte<EMovementMode> MovementModeMaxSpeed = EMovementMode::MOVE_Walking;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+		float MaxSpeed = 500.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+		float MaxCrouchingSpeed = 250.f;
+
+	FMovementInfo() {}
+	
+};
+
+USTRUCT(BlueprintType)
+struct FMovementInfo_Array
+{
+	GENERATED_BODY()
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite)
+		TArray<FMovementInfo> MovementInfo = {};
+	
+	// Get max movement speed by movement mode
+	FORCEINLINE float GetMaxMovementSpeed(EMovementMode MovementMode, bool bIsCrouching, bool& bIsSuccess) const
+	{
+		bIsSuccess = false;
+		for (const auto& Element : MovementInfo)
+		{
+			if (Element.MovementModeMaxSpeed == MovementMode)
+			{
+				bIsSuccess = true;
+				return bIsCrouching ? Element.MaxCrouchingSpeed : Element.MaxSpeed;
+			}
+		}
+
+		return 0.f;
+	}
+
+	FMovementInfo_Array() {}
+	
+};
+
 UCLASS()
-class BASECHARMOVEMENTCOMP_API UCustomCharacterMovementComp : public UCharacterMovementComponent
+class BASECHARMOVEMENTCOMP_API UCustomCharacterMovementComp : public UCharacterMovementComponent, public IMovementComponentInteractInterface
 {
 	GENERATED_BODY()
 
@@ -22,6 +67,11 @@ public:
 	virtual void BeginPlay() override;
 	virtual float GetMaxSpeed() const override;
 
+	// Interface Methods
+
+	// Set current movement tag
+	void ToggleCurrentMovementTag_Implementation(FGameplayTag NewMovementTag, bool bIsAdd = true);
+	
 	// Replicate properties
 	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
 	
@@ -41,18 +91,6 @@ public:
 	UFUNCTION(NetMulticast, Unreliable, BlueprintCallable, Category="MovementInfo")
 		void NetMulticast_SetupMovementComp();
 	
-	
-	// Setter
-
-	UFUNCTION(Server, Unreliable, WithValidation, BlueprintCallable, Category="MovementInfo")
-		void Server_SetIsShouldRun(const bool NewShouldRun);
-	
-	// Getter
-	
-	// Get is should run now
-	UFUNCTION(BlueprintCallable, BlueprintNativeEvent, Category="MovementInfo")
-		bool GetIsShouldRun() const;
-	
 private:
 
 	// Functions
@@ -62,6 +100,7 @@ private:
 	
 	void CalculateMovementInfo();
 
+	float GetMaxSpeedByMovementMode() const;
 	float GetDirection() const;
 	
 	// Calculate Max Speed by directions
@@ -83,6 +122,11 @@ private:
 	// Sort camera shake by speed
 	void SortCameraShakeBySpeed();
 
+	// RPC
+
+	UFUNCTION(Server, Unreliable, WithValidation, BlueprintCallable, Category="MovementInfo")
+		void Server_ToggleCurrentMovementTag(FGameplayTag NewMovementTag, bool bIsAdd = true);
+	
 	// Debug
 
 	#if !UE_BUILD_SHIPPING
@@ -95,19 +139,19 @@ private:
 
 	UPROPERTY(EditAnywhere, Category="MovementInfo", meta=(AllowPrivateAccess))
 		TMap<float, TSubclassOf<UCameraShakeBase>> CameraShakeBySpeed;
+	UPROPERTY(EditAnywhere, Category="MovementInfo", meta=(AllowPrivateAccess))
+		TMap<FGameplayTag, FMovementInfo_Array> MaxWalkSpeedByTag;
 	UPROPERTY(EditAnywhere, Category="MovementInfo", meta=(ClampMin="0.01", ClampMax="1", Units="s", AllowPrivateAccess))
 		float CheckInfoFreq = 0.1f;
-	UPROPERTY(EditAnywhere, Category="MovementInfo|Run", meta=(AllowPrivateAccess))
-		float RunSpeed = 500.f;
-	UPROPERTY(EditAnywhere, Category="MovementInfo|Run", meta=(AllowPrivateAccess))
-		float RunSpeedCrouched = 250.f;
 
 	// Service
 
 	UPROPERTY(Replicated)
-		float CurrentMaxSpeed = MaxWalkSpeed; // Current max speed
+		FMovementInfo_Array CurrentMaxSpeedByMovementTag = FMovementInfo_Array();
 	UPROPERTY(Replicated)
-		bool bShouldRun = false; // Is should run now
+		float CurrentMaxSpeed = Super::GetMaxSpeed(); // Current max speed
+	UPROPERTY(Replicated)
+		FGameplayTagContainer CurrentMovementTags = FGameplayTagContainer();
 	
 	FTimerHandle CalculateMovementInfoTimerHandle;
 	

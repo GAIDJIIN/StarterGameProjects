@@ -1,4 +1,4 @@
-//Florist Game. All rights reserved.
+//Foot Sound Component. All rights reserved.
 
 #pragma once
 
@@ -6,7 +6,7 @@
 #include "Components/ActorComponent.h"
 #include "FootSoundComponent.generated.h"
 
-DECLARE_LOG_CATEGORY_EXTERN(FootSoundComp, Log, All);
+DECLARE_LOG_CATEGORY_EXTERN(LogFootSoundComp, Log, All);
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class FOOTCOMPONENT_API UFootSoundComponent : public UActorComponent
@@ -37,19 +37,27 @@ private:
 
 	// Properties
 	// Blueprints
+	// Check freq speed for play foot sounds
 	UPROPERTY(EditAnywhere, Category="Foot Sound Setup", meta=(ClampMin="0.001", AllowPrivateAccess))
 		float CheckSpeedFreq = 0.25f;
+	// Foot sounds by surface
 	UPROPERTY(EditAnywhere, Category="Foot Sound Setup|Sounds", meta=(AllowPrivateAccess))
 		TMap<TEnumAsByte<EPhysicalSurface>, TSoftObjectPtr<USoundBase>> FootSoundBySurface;
+	// Curve of foot sound play time (alpha time between two foot sounds)
 	UPROPERTY(EditAnywhere, Category="Foot Sound Setup|Curve", meta=(AllowPrivateAccess))
 		TObjectPtr<UCurveFloat> CurveFootSoundPlayTime = nullptr;
+	// Curve of foot sound volume multiplayer
 	UPROPERTY(EditAnywhere, Category="Foot Sound Setup|Curve", meta=(AllowPrivateAccess))
 		TObjectPtr<UCurveFloat> CurveFootSoundVolumeMultiplier = nullptr;
+	// Curve of foot noise loudness by speed
+	UPROPERTY(EditAnywhere, Category="Foot Sound Setup|Curve", meta=(AllowPrivateAccess))
+		TObjectPtr<UCurveFloat> CurveFootNoiseLoudnessMultiplayer = nullptr;
 	UPROPERTY(EditAnywhere, Category="Debug", meta=(AllowPrivateAccess))
 		bool bShowDebug = false;
 	
 	// Service
 	TWeakObjectPtr<ACharacter> OwnerCharRef;
+	TWeakObjectPtr<UPawnNoiseEmitterComponent> FootNoiseEmitter;
 	bool bIsPlayFootSoundNow = false;
 	float LastSoundPlayTime = 0.f;
 	float LastSoundVolumeMultiplier = 0.f;
@@ -67,13 +75,25 @@ private:
 	void CheckSpeedForFootSound();
 	
 	void TryPlayFootSound();
-	void PlayFootSound();
 	
 	void SetFootSoundTimer();
 	void TrySetFootSoundTimer();
 
 	void TryLoadAndPlayFootSound();
+
+	// Getter
+
+	// Get foot noise loudness by sound volume and speed
+	FORCEINLINE float GetNoiseLoudnessBySpeed() const; 
 	
+	// RPC Methods
+	
+	UFUNCTION(Server, Unreliable, WithValidation, Category = "Foot Sound")
+		void Server_PlayFootSound();
+	// Play foot sound
+	UFUNCTION(NetMulticast, Unreliable, Category = "Foot Sound")
+		void NetMulticast_PlayFootSound();
+
 	// Debug
 	void ShowDebug();
 };
