@@ -89,7 +89,9 @@ void UInteractComponent::BeginPlay()
 void UInteractComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+#if !UE_BUILD_SHIPPING
 	ShowDebug();
+#endif
 }
 
 void UInteractComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
